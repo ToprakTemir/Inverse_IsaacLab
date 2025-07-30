@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "InverseAssemblyProject"
+version = "0.0.0"
+description = "RL experiments with Isaac Lab"
+dependencies = []            # add any run‑time deps here
+
+[tool.setuptools.packages.find]
+where = ["."]
