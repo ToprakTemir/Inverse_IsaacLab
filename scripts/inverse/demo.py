@@ -10,7 +10,7 @@ args = parser.parse_args()
 app_launcher = AppLauncher(headless=False)
 app = app_launcher.app
 
-from InverseAssemblyProject.tasks.manager_based.task_1.task1_env_cfg import Task1EnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembled_start.task1_env_cfg import Task1EnvCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
 import torch

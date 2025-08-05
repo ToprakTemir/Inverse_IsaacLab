@@ -73,57 +73,73 @@ class Task1SceneCfg(InteractiveSceneCfg):
         actuators={
             "shoulder_pan_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["shoulder_pan_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "shoulder_lift_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["shoulder_lift_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "elbow_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["elbow_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "wrist_1_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_1_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "wrist_2_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_2_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "wrist_3_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_3_joint"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "Slider_1": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_1"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "Slider_2": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_2"],
-                effort_limit=100.0,
-                velocity_limit=100.0,
+                effort_limit_sim
+                =100.0,
+                velocity_limit_sim
+                =100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
@@ -271,7 +287,7 @@ class TerminationsCfg:
 @configclass
 class Task1EnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: Task1SceneCfg = Task1SceneCfg(num_envs=2, env_spacing=2.5)
+    scene: Task1SceneCfg = Task1SceneCfg(num_envs=2048, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -285,6 +301,7 @@ class Task1EnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 8.0
         self.sim.render_interval = self.decimation
         self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
+        self.sim.physx.gpu_collision_stack_size = 2 ** 30
 
         self.viewer.eye = (1.5, 1.5, 1.2)
         self.viewer.lookat = (0.0, 0.0, 0.5)
