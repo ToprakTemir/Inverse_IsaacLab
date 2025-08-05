@@ -5,11 +5,11 @@ app_launcher = AppLauncher(headless=False)
 app = app_launcher.app
 
 from isaaclab.envs import ManagerBasedRLEnv
-from InverseAssemblyProject.tasks.manager_based.assembled_start.task1_env_cfg import Task1EnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg import AssembledStartEnvCfg
 import torch
 import time
 
-env = ManagerBasedRLEnv(Task1EnvCfg())
+env = ManagerBasedRLEnv(AssembledStartEnvCfg())
 
 obs_dim = env.observation_space
 act_dim = env.action_space

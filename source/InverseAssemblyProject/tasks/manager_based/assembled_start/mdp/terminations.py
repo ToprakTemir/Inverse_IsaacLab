@@ -5,15 +5,17 @@ def time_out(env):
     return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
 
-def check_success(env, pos_tolerance: float):
+def disassembly_success(env, pos_tolerance: float = 0.06):
     """Success when distance between disk and target base is <= tolerance."""
     disk = env.scene["moved_obj"]
     target = env.scene["fixed_obj"]
 
     diff = disk.data.root_pos_w - target.data.root_pos_w
     dist = torch.linalg.norm(diff, dim=-1)
-    return dist <= pos_tolerance
+    return dist >= pos_tolerance
 
+def assembly_success(env, pos_tolerance: float = 0.05):
+    return not disassembly_success(env, pos_tolerance) # dist < pos_tolerance
 
 def out_of_bounds(env, limit: float = 1.5, min_z: float = -0.2):
     """Terminate if robot base or disk leaves a bounding box.

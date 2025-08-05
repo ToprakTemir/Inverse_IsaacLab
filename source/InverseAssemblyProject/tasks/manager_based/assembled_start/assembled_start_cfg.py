@@ -30,7 +30,7 @@ ARM_KP = 80.0 # Proportional gain for the arm joints
 ARM_KD = 10.0 # Derivative gain for the arm joints
 
 @configclass
-class Task1SceneCfg(InteractiveSceneCfg):
+class AssembledStartSceneCfg(InteractiveSceneCfg):
     """Scene for Task 1: separate assets."""
 
     ground = AssetBaseCfg(
@@ -173,27 +173,27 @@ class Task1SceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action space: joint angle targets for the robot."""
 
-    joint_angles = mdp.JointPositionToLimitsActionCfg(
-        asset_name="robot",
-        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1", "Slider_2"],
-        rescale_to_limits=True
-    )
+    # joint_angles = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1", "Slider_2"],
+    #     rescale_to_limits=True
+    # )
 
-    # ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
-    #     body_name = "ee_base_link",
-    #     controller=mdp.DifferentialIKControllerCfg(
-    #         command_type = "position",  # position: 3d, pose: 6d (position + orientation)
-    #         use_relative_mode=True,  # Relative changes in position/pose
-    #         ik_method="pinv",  # Pseudo-inverse method
-    #     )
-    # )
-    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["Slider_1", "Slider_2"],
-    #     rescale_to_limits=True,
-    # )
+    ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+        body_name = "ee_base_link",
+        controller=mdp.DifferentialIKControllerCfg(
+            command_type = "position",  # position: 3d, pose: 6d (position + orientation)
+            use_relative_mode=True,  # Relative changes in position/pose
+            ik_method="pinv",  # Pseudo-inverse method
+        )
+    )
+    ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot",
+        joint_names=["Slider_1", "Slider_2"],
+        rescale_to_limits=True,
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -263,10 +263,9 @@ class EventCfg:
 class RewardsCfg:
     """Reward shaping terms."""
 
-    dummy_zero_reward = RewTerm(
-        func=lambda: 0.0,
-        weight=0.0,
-    )
+    distance_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
+    success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
+    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
 
 
 # --------------------------------------------------------------------------------------
@@ -277,7 +276,7 @@ class TerminationsCfg:
     """Episode termination conditions."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # success = DoneTerm(func=mdp.check_success, params={"pos_tolerance": 0.005})
+    success = DoneTerm(func=mdp.disassembly_success)
     # failure_out_of_bounds = DoneTerm(func=mdp.out_of_bounds, params={"limit": 1.5, "min_z": -0.2})
 
 
@@ -285,9 +284,9 @@ class TerminationsCfg:
 # Top‑level env config
 # --------------------------------------------------------------------------------------
 @configclass
-class Task1EnvCfg(ManagerBasedRLEnvCfg):
+class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: Task1SceneCfg = Task1SceneCfg(num_envs=2048, env_spacing=2.5)
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=512, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
