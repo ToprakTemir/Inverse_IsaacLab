@@ -18,7 +18,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser()
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to trained model (.pt)")
 args = parser.parse_args()
-app_launcher = AppLauncher(headless=True)
+app_launcher = AppLauncher(headless=False)
 app = app_launcher.app
 
 
@@ -192,7 +192,7 @@ def train(config):
         buf.compute_returns_and_adv(config.gamma, config.gae_lambda)
 
         # Update policy
-        for epoch in range(config.epochs):
+        for _ in range(config.backprops_per_rollout):
             for b_obs, b_act, b_logp, b_adv, b_ret in buf.get(config.batch_size):
                 mu, std, val = policy(b_obs)
                 dist = Normal(mu, std)
@@ -229,19 +229,19 @@ if __name__ == "__main__":
 
     # Default hyper-params (will be overridden by W&B sweep if present)
     default_cfg = dict(
-        run_name        = f"ppo-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        lr              = 3e-4,
-        hidden_size     = 256,
-        rollout_steps   = 1024,        # 1024 * 512 envs ≈ 0.5 M samples / update
-        epochs          = 4,
-        batch_size      = 16384,
-        gamma           = 0.99,
-        gae_lambda      = 0.95,
-        clip_eps        = 0.2,
-        ent_coef        = 0.0,
-        vf_coef         = 0.5,
-        max_grad_norm   = 0.5,
-        updates         = 1500,
+        run_name=f"ppo-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        lr=3e-4,
+        hidden_size=256,
+        rollout_steps=256,
+        backprops_per_rollout=4,
+        batch_size=16384,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_eps=0.2,
+        ent_coef=0.0,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        updates=10_000,
     )
 
     cfg = SimpleNamespace(**default_cfg)

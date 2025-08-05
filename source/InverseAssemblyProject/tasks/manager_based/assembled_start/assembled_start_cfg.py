@@ -42,7 +42,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
-            usd_path="assets/robot.usd",
+            usd_path="../assets/robot.usd",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=1000.0,
@@ -149,14 +149,14 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
     moved_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/disk",
         spawn=sim_utils.UsdFileCfg(
-            usd_path="assets/task1_moved.usd",
+            usd_path="../assets/task1_moved.usd",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0)),
     )
 
     # Fixed base / rod
     fixed_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/base",
-        spawn=sim_utils.UsdFileCfg(usd_path="assets/task1_fixed.usd"),
+        spawn=sim_utils.UsdFileCfg(usd_path="../assets/task1_fixed.usd"),
     )
 
     # Lighting
@@ -263,8 +263,9 @@ class EventCfg:
 class RewardsCfg:
     """Reward shaping terms."""
 
-    distance_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
+    disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
     success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
+    proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0)
     control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
 
 
@@ -286,7 +287,8 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=4096 * 3, env_spacing=2.5)
+    # scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=4096 * 6, env_spacing=2.5)
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 1, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
