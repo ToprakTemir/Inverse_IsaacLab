@@ -29,6 +29,6 @@ def disassembly_success_reward(env, pos_tolerance: float = 0.05):
 def control_penalty(env):
     """Penalty for control actions to encourage smooth movements."""
     # Assuming env.action_manager.action is the action tensor
-    action = env.action_manager.action_tensor
+    action = env.action_manager.action
     return -torch.linalg.norm(action, dim=-1)
 
