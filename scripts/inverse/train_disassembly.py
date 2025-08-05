@@ -33,6 +33,7 @@ from torch.distributions import Normal
 
 import numpy as np
 import wandb
+from tqdm import tqdm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg import AssembledStartEnvCfg
@@ -154,7 +155,7 @@ def train(config):
     global_step = 0
     best_episode_reward = -np.inf
 
-    for update in range(config.updates):
+    for update in tqdm(range(config.updates), desc="PPO updates"):
 
         # Collect experience
         buf.ptr = 0 # reset buffer pointer to overwrite old data
@@ -166,7 +167,6 @@ def train(config):
                 act = dist.sample()
                 logp = dist.log_prob(act).sum(-1)
             next_obs, rew, terminated, time_out, info = env.step(act)
-            mean_episode_reward += rew.mean().item()
             done = terminated | time_out
             next_obs = next_obs["policy"]  # extract policy observation
             buf.add(
@@ -176,6 +176,14 @@ def train(config):
             )
             obs = torch.as_tensor(next_obs, device=device)
             global_step += n_envs
+
+            # ----------------------- Logging -------------------------------
+            mean_reward = rew.mean().item()
+            mean_episode_reward += mean_reward
+            wandb.log({
+                "mean_reward": mean_reward,
+                "global_step": global_step,
+            })
 
         with torch.no_grad():
             _, _, last_val = policy(obs)
@@ -204,12 +212,6 @@ def train(config):
                 nn.utils.clip_grad_norm_(policy.parameters(), config.max_grad_norm)
                 optim_.step()
 
-        # Logging ------------------------------------------------------------------
-        wandb.log({
-            "mean_reward": mean_episode_reward,
-            "learning_rate": optim_.param_groups[0]["lr"],
-            "global_step": global_step,
-        })
 
         # Check-pointing ------------------------------------------------------------
         ckpt_dir = Path("checkpoints")
@@ -239,7 +241,7 @@ if __name__ == "__main__":
         ent_coef        = 0.0,
         vf_coef         = 0.5,
         max_grad_norm   = 0.5,
-        updates         = 10_000,
+        updates         = 1500,
     )
 
     cfg = SimpleNamespace(**default_cfg)
