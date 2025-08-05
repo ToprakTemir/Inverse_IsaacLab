@@ -40,10 +40,17 @@ else:
     #     return action
 
 # Run demo
+env.reset()
+env.step(torch.rand_like(env.action_manager.action) * 2 - 1)
+env.step(torch.rand_like(env.action_manager.action) * 2 - 1)
+env.step(torch.rand_like(env.action_manager.action) * 2 - 1)
 obs, info = env.reset()
-for _ in range(1000):  # run N steps
+
+# while True:
+#     time.sleep(0.001)
+
+while True:
     action = act(obs)
     obs, rew, terminated, time_out, info = env.step(action)
-    env.render()  # optional if you want smoother live display
 
 app.close()

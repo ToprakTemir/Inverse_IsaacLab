@@ -1,5 +1,6 @@
 import math
 
+from pygame.gfxdraw import aatrigon
 from sympy.physics.vector import kinematic_equations
 
 from isaaclab.utils import configclass
@@ -34,8 +35,7 @@ class Task1SceneCfg(InteractiveSceneCfg):
 
     ground = AssetBaseCfg(
         prim_path="/ground",
-        spawn=sim_utils.GroundPlaneCfg(size=(16384.0, 16384.0)),
-
+        spawn=sim_utils.GroundPlaneCfg(size=(8192.0, 8192.0)),
     )
 
     # UR3e robot with gripper
@@ -53,7 +53,7 @@ class Task1SceneCfg(InteractiveSceneCfg):
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
                 solver_position_iteration_count=4,
-                solver_velocity_iteration_count=0,
+                solver_velocity_iteration_count=1,
                 sleep_threshold=0.005,
                 stabilization_threshold=0.001,
             ),
@@ -130,17 +130,17 @@ class Task1SceneCfg(InteractiveSceneCfg):
         },
     )
 
-    # Movable disk object (dynamic rigid body)
     moved_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/disk",
-        spawn=sim_utils.UsdFileCfg(usd_path="assets/task1_moved_obj.usd"),
+        spawn=sim_utils.UsdFileCfg(
+            usd_path="assets/task1_moved.usd",
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0)),
     )
 
     # Fixed base / rod
     fixed_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/base",
-        spawn=sim_utils.UsdFileCfg(usd_path="assets/task1_fixed_obj.usd", rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True)),
-
+        spawn=sim_utils.UsdFileCfg(usd_path="assets/task1_fixed.usd"),
     )
 
     # Lighting
@@ -215,19 +215,27 @@ class EventCfg:
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
-    reset_disk_pose = EventTerm(
-        func=mdp.reset_disk_pose,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("moved_obj"),
-        },
-    )
+    # reset_disk_pose = EventTerm(
+    #     func=mdp.reset_disk_pose,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("moved_obj"),
+    #     },
+    # )
+    # reset_base_pose = EventTerm(
+    #     func=mdp.reset_base_pose,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("fixed_obj"),
+    #     },
+    # )
 
-    reset_base_pose = EventTerm(
-        func=mdp.reset_base_pose,
+    reset_into_assembled_pose = EventTerm(
+        func=mdp.reset_to_assembled_pose,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("fixed_obj"),
+            "base_asset_cfg": SceneEntityCfg("fixed_obj"),
+            "disk_asset_cfg": SceneEntityCfg("moved_obj"),
         },
     )
 
@@ -263,7 +271,7 @@ class TerminationsCfg:
 @configclass
 class Task1EnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: Task1SceneCfg = Task1SceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: Task1SceneCfg = Task1SceneCfg(num_envs=2, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -276,6 +284,7 @@ class Task1EnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1.0 / 120.0
         self.episode_length_s = 8.0
         self.sim.render_interval = self.decimation
+        self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
 
         self.viewer.eye = (1.5, 1.5, 1.2)
         self.viewer.lookat = (0.0, 0.0, 0.5)
