@@ -286,7 +286,7 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=512, env_spacing=2.5)
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=4096, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

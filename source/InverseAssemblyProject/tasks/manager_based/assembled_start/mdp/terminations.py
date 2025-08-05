@@ -1,10 +1,5 @@
 import torch
 
-def time_out(env):
-    """Placeholder for time-out termination (handled by DoneTerm with time_out=True)."""
-    return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-
-
 def disassembly_success(env, pos_tolerance: float = 0.06):
     """Success when distance between disk and target base is <= tolerance."""
     disk = env.scene["moved_obj"]
