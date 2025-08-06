@@ -1,3 +1,4 @@
+import os
 import math
 
 from pygame.gfxdraw import aatrigon
@@ -51,7 +52,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
                 enable_gyroscopic_forces=True,
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=True,
+                enabled_self_collisions=False,
                 solver_position_iteration_count=4,
                 solver_velocity_iteration_count=1,
                 sleep_threshold=0.005,
@@ -265,7 +266,7 @@ class RewardsCfg:
 
     disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
     success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
-    proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0)
+    proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0, params={"asset_cfg": SceneEntityCfg("moved_obj")})
     control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
 
 
@@ -287,8 +288,8 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    # scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=4096 * 6, env_spacing=2.5)
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 1, env_spacing=2.5)
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 4096, env_spacing=2.5)
+    # scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 1, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -298,11 +299,19 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         self.decimation = 2
-        self.sim.dt = 1.0 / 120.0
+        self.sim.dt = 1.0 / 60.0
         self.episode_length_s = 8.0
         self.sim.render_interval = self.decimation
-        self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
-        self.sim.physx.gpu_collision_stack_size = 2 ** 30
+        # self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
+        self.sim.physx.gpu_collision_stack_size = 2 ** 29
 
         self.viewer.eye = (1.5, 1.5, 1.2)
         self.viewer.lookat = (0.0, 0.0, 0.5)
+
+        # Core devices
+        self.sim.device = "cuda:0"  # sim tensors/devices
+        self.sim.use_gpu_pipeline = True  # GPU pipeline for sim
+        self.sim.physx.use_gpu = True  # PhysX on GPU
+        self.sim.enable_scene_query_support = False  # if you don’t need raycasts/queries
+        # CPU threads for what remains on CPU:
+        self.sim.physx.num_threads = max(8, os.cpu_count() // 2)

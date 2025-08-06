@@ -18,7 +18,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser()
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to trained model (.pt)")
 args = parser.parse_args()
-app_launcher = AppLauncher(headless=False)
+app_launcher = AppLauncher(headless=True)
 app = app_launcher.app
 
 
@@ -241,7 +241,7 @@ if __name__ == "__main__":
         ent_coef=0.0,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        updates=10_000,
+        updates=1000,
     )
 
     cfg = SimpleNamespace(**default_cfg)
