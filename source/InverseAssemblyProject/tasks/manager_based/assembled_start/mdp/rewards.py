@@ -8,6 +8,7 @@ def disassembly_dist_reward(env):
     """Reward based on distance between disk and target base."""
 
     disk_pos = env.scene["moved_obj"].data.root_pos_w
+    num_environments = disk_pos.shape[0]
 
     target_base = env.scene["fixed_obj"].data.root_pos_w
     target_offset = torch.tensor([0.0594, -0.09807075, -0.0214], device=disk_pos.device).repeat(num_environments, 1)
@@ -20,6 +21,7 @@ def disassembly_dist_reward(env):
 def disassembly_success_reward(env, pos_tolerance: float = 0.06):
     """Success reward when distance between disk and target base is >= tolerance."""
     disk_pos = env.scene["moved_obj"].data.root_pos_w
+    num_environments = disk_pos.shape[0]
 
     target_base = env.scene["fixed_obj"].data.root_pos_w
     target_offset = torch.tensor([0.0594, -0.09807075, -0.0214], device=disk_pos.device).repeat(num_environments, 1)
