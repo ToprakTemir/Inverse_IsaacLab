@@ -1,0 +1,66 @@
+program: train_disassembly.py
+method: bayes
+metric:
+  name: rollout/mean_reward
+  goal: maximize
+
+early_terminate:
+  type: hyperband
+  min_iter: 20
+
+parameters:
+  # --- Reward weights (primary focus) ---
+  rw_progress:
+    distribution: uniform
+    min: 0.5
+    max: 10.0
+  rw_success:
+    distribution: uniform
+    min: 0.5
+    max: 10.0
+  rw_proximity:
+    distribution: uniform
+    min: 0.5
+    max: 10.0
+  rw_control_penalty:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.05
+
+  # --- Policy / optimization ---
+  lr:
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 3.0e-3
+  hidden_size:
+    values: [128, 256, 512, 1024]
+  clip_eps:
+    values: [0.1, 0.2, 0.3]
+  gae_lambda:
+    distribution: uniform
+    min: 0.90
+    max: 0.99
+  ent_coef:
+    distribution: uniform
+    min: 0.0
+    max: 0.02
+  vf_coef:
+    distribution: uniform
+    min: 0.2
+    max: 1.0
+  max_grad_norm:
+    values: [0.5, 1.0]
+  rollout_steps:
+    values: [128, 256, 512]
+  backprops_per_rollout:
+    values: [2, 4, 8]
+  batch_size:
+    values: [8192, 16384, 32768]
+  policy_init_log_std:
+    distribution: uniform
+    min: -1.5
+    max: 0.5
+
+  # --- Seed ---
+  seed:
+    values: [0, 1, 2]

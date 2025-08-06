@@ -40,7 +40,7 @@ def reset_disk_pose(env, env_ids, asset_cfg: SceneEntityCfg):
     ang[env_ids] = 0.0
 
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
-    disk.write_root_state_to_sim(root_state, env_ids)
+    disk.write_root_state_to_sim(root_state[env_ids], env_ids)
 
 def reset_base_pose(env, env_ids, asset_cfg: SceneEntityCfg):
     # put the disk in a set position in front of the robot, a bit in the air and rotated so that it is turned towards the robot
@@ -63,7 +63,7 @@ def reset_base_pose(env, env_ids, asset_cfg: SceneEntityCfg):
     lin[env_ids] = 0.0
     ang[env_ids] = 0.0
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
-    base.write_root_state_to_sim(root_state, env_ids)
+    base.write_root_state_to_sim(root_state[env_ids], env_ids)
 
 def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
     """Reset such that the disk is already inserted to the base."""
@@ -89,7 +89,7 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     # lin[env_ids] = 0.0
     # ang[env_ids] = 0.0
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
-    disk.write_root_state_to_sim(root_state, env_ids)
+    disk.write_root_state_to_sim(root_state[env_ids], env_ids)
 
 
 

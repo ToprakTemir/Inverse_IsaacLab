@@ -267,7 +267,7 @@ class RewardsCfg:
     disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
     success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
     proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0, params={"asset_cfg": SceneEntityCfg("moved_obj")})
-    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
+    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.0)
 
 
 # --------------------------------------------------------------------------------------
@@ -288,8 +288,7 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 4096, env_spacing=2.5)
-    # scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs= 1, env_spacing=2.5)
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=1, env_spacing=2.5)
 
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -302,7 +301,7 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1.0 / 60.0
         self.episode_length_s = 8.0
         self.sim.render_interval = self.decimation
-        # self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
+        self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
         self.sim.physx.gpu_collision_stack_size = 2 ** 29
 
         self.viewer.eye = (1.5, 1.5, 1.2)
