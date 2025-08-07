@@ -13,11 +13,11 @@ Run:
 # Imports
 # ------------------------------------------------------------------------------------
 
-import argparse
+# import argparse
 from isaaclab.app import AppLauncher
-parser = argparse.ArgumentParser()
-parser.add_argument("--checkpoint", type=str, default=None, help="Path to trained model (.pt)")
-args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--checkpoint", type=str, default=None, help="Path to trained model (.pt)")
+# args = parser.parse_args()
 app_launcher = AppLauncher(headless=True)
 app = app_launcher.app
 
@@ -42,10 +42,16 @@ from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_
 from NN import MLPPolicy, RolloutBuffer
 
 
-def make_env():
-    cfg = AssembledStartEnvCfg()
+def make_env(config):
+    cfg = AssembledStartEnvCfg(
+        num_envs=config.num_envs,
+        # reward weights
+        rw_progress=config.rw_progress,
+        rw_success=config.rw_success,
+        rw_proximity=config.rw_proximity,
+        rw_control_penalty=config.rw_control_penalty,
+    )
     env = ManagerBasedRLEnv(cfg)
-    # env = gym_wrapper.GymEnvWrapper(env, flatten_obs=True)   # obs -> 1-D float32
     return env
 
 
@@ -56,7 +62,8 @@ def train(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 1. Environment
-    env = make_env()
+
+    env = make_env(config)
     obs_dim = env.observation_space['policy'].shape[1]  # policy observation space
     act_dim = env.action_space.shape[1] # action space
     print(f"obs_dim: {obs_dim}, act_dim: {act_dim}")
@@ -76,14 +83,9 @@ def train(config):
         device=device,
     )
 
-    # 4. W&B
-    wandb.init(project="disassembly-policy",
-               name=config.run_name,
-               config=config.__dict__,
-               save_code=True)
     wandb.watch(policy, log="gradients", log_freq=1000)
 
-    # 5. Training
+    # 4. Training
     obs, _ = env.reset()
     obs = obs["policy"]  # extract policy observation
     obs = torch.as_tensor(obs, device=device)
@@ -92,9 +94,13 @@ def train(config):
 
     for update in tqdm(range(config.updates), desc="PPO updates"):
 
-        # Collect experience
+        # ------------ Collect experience -----------------------------
         buf.ptr = 0 # reset buffer pointer to overwrite old data
+
         mean_episode_reward = 0
+        episodes_this_update = 0
+        successes_this_update = 0
+
         for _ in range(config.rollout_steps):
             with torch.no_grad():
                 mu, std, val = policy(obs)
@@ -110,9 +116,15 @@ def train(config):
                 logp, val.squeeze(-1),
             )
             obs = torch.as_tensor(next_obs, device=device)
-            global_step += n_envs
 
             # ----------------------- Logging -------------------------------
+            global_step += n_envs
+
+            term_t = torch.as_tensor(terminated, device=device, dtype=torch.bool)
+            tout_t = torch.as_tensor(time_out, device=device, dtype=torch.bool)
+            successes_this_update += (term_t & (~tout_t)).sum().item()
+            episodes_this_update += (term_t | tout_t).sum().item()
+
             mean_reward = rew.mean().item()
             mean_episode_reward += mean_reward
             wandb.log({
@@ -120,13 +132,23 @@ def train(config):
                 "global_step": global_step,
             })
 
+        # Compute & log success rate for this update
+        success_rate = (successes_this_update / episodes_this_update) if episodes_this_update > 0 else 0.0
+        mean_episode_reward /= float(config.rollout_steps)
+        wandb.log({
+            "rollout/success_rate": success_rate,
+            "rollout/episodes": episodes_this_update,
+            "rollout/mean_reward": mean_episode_reward,
+            "update": update
+        })
+
+        # ----------------------- Policy Updates -------------------------------
         with torch.no_grad():
             _, _, last_val = policy(obs)
             last_val = last_val.squeeze(-1)
         buf.vals[-1] = last_val            # bootstrap final value
         buf.compute_returns_and_adv(config.gamma, config.gae_lambda)
 
-        # Update policy
         for _ in range(config.backprops_per_rollout):
             for b_obs, b_act, b_logp, b_adv, b_ret in buf.get(config.batch_size):
                 mu, std, val = policy(b_obs)
@@ -148,13 +170,13 @@ def train(config):
                 optim_.step()
 
 
-        # Check-pointing ------------------------------------------------------------
+        # Checkpointing ------------------------------------------------------------
         ckpt_dir = Path("checkpoints")
         ckpt_dir.mkdir(exist_ok=True)
-        torch.save(policy.state_dict(), ckpt_dir / f"run-{cfg.run_name}-latest.pth")
+        torch.save(policy.state_dict(), ckpt_dir / f"run-{config.run_name}-latest.pth")
         if mean_episode_reward > best_episode_reward:
             best_return = best_episode_reward
-            torch.save(policy.state_dict(), ckpt_dir / f"run-{cfg.run_name}-best.pth")
+            torch.save(policy.state_dict(), ckpt_dir / f"run-{config.run_name}-best.pth")
 
 
 # ------------------------------------------------------------------------------------
@@ -164,6 +186,8 @@ if __name__ == "__main__":
 
     # Default hyper-params (will be overridden by W&B sweep if present)
     default_cfg = dict(
+        num_envs=2048,
+        policy_init_log_std=0.0,
         run_name=f"ppo-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
         lr=3e-4,
         hidden_size=256,
@@ -177,11 +201,23 @@ if __name__ == "__main__":
         vf_coef=0.5,
         max_grad_norm=0.5,
         updates=1000,
+        rw_progress =2.0,
+        rw_success= 1.0,
+        rw_proximity=1.0,
+        rw_control_penalty=0.01
     )
 
-    cfg = SimpleNamespace(**default_cfg)
+    config = SimpleNamespace(**default_cfg)
+
+    wandb.init(project="disassembly-policy",
+               name=config.run_name,
+               config=config.__dict__, # default hyper-params
+               save_code=True)
+    wandb.define_metric("rollout/success_rate", summary="max")
+
     # If launched by wandb agent, parameters are injected automatically
     if wandb.run is not None and wandb.config is not None:
-        cfg.__dict__.update(wandb.config)
+        print("Using W&B config:")
+        config.__dict__.update(wandb.config)
 
-    train(cfg)
+    train(config)

@@ -4,6 +4,7 @@ import math
 from pygame.gfxdraw import aatrigon
 from sympy.physics.vector import kinematic_equations
 
+from isaaclab.sim import activate_contact_sensors
 from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 
@@ -44,6 +45,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
             usd_path="../assets/robot.usd",
+            activate_contact_sensors=True,  # Enable contact sensors for the robot
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=1000.0,
@@ -174,27 +176,28 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action space: joint angle targets for the robot."""
 
-    # joint_angles = mdp.JointPositionToLimitsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1", "Slider_2"],
-    #     rescale_to_limits=True
-    # )
+    joint_angles = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot",
+        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1", "Slider_2"],
+        rescale_to_limits=True
+    )
 
-    ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
-        asset_name="robot",
-        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
-        body_name = "ee_base_link",
-        controller=mdp.DifferentialIKControllerCfg(
-            command_type = "position",  # position: 3d, pose: 6d (position + orientation)
-            use_relative_mode=True,  # Relative changes in position/pose
-            ik_method="pinv",  # Pseudo-inverse method
-        )
-    )
-    ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
-        asset_name="robot",
-        joint_names=["Slider_1", "Slider_2"],
-        rescale_to_limits=True,
-    )
+
+    # ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+    #     body_name = "ee_base_link",
+    #     controller=mdp.DifferentialIKControllerCfg(
+    #         command_type = "position",  # position: 3d, pose: 6d (position + orientation)
+    #         use_relative_mode=True,  # Relative changes in position/pose
+    #         ik_method="pinv",  # Pseudo-inverse method
+    #     )
+    # )
+    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["Slider_1", "Slider_2"],
+    #     rescale_to_limits=True,
+    # )
 
 
 # --------------------------------------------------------------------------------------
@@ -267,7 +270,7 @@ class RewardsCfg:
     disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
     success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
     proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0, params={"asset_cfg": SceneEntityCfg("moved_obj")})
-    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.0)
+    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
 
 
 # --------------------------------------------------------------------------------------
@@ -288,8 +291,16 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=1, env_spacing=2.5)
+    # externally overridable knobs (accepted by constructor)
+    num_envs: int = 1            # will be pushed to scene.num_envs
+    env_spacing: float = 2.5     # will be pushed to scene.env_spacing
 
+    rw_progress: float = 2.0
+    rw_success: float = 1.0
+    rw_proximity: float = 1.0
+    rw_control_penalty: float = 0.01
+
+    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=1, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
@@ -297,20 +308,28 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
+        # propagate top-level overrides down into nested configs
+        self.scene.num_envs = int(self.num_envs)
+        self.scene.env_spacing = float(self.env_spacing)
+
+        # IMPORTANT: push reward weights to the nested rewards cfg
+        self.rewards.disassembly_progress_reward.weight = float(self.rw_progress)
+        self.rewards.success_reward.weight = float(self.rw_success)
+        self.rewards.proximity_reward.weight = float(self.rw_proximity)
+        self.rewards.control_penalty.weight = float(self.rw_control_penalty)
+
+
         self.decimation = 2
         self.sim.dt = 1.0 / 60.0
         self.episode_length_s = 8.0
         self.sim.render_interval = self.decimation
-        self.sim.physx.gpu_max_rigid_patch_count = 2621440  # Increase GPU rigid patch count for larger environments
+        self.sim.physx.gpu_max_rigid_patch_count = 2621440
         self.sim.physx.gpu_collision_stack_size = 2 ** 29
 
         self.viewer.eye = (1.5, 1.5, 1.2)
         self.viewer.lookat = (0.0, 0.0, 0.5)
 
-        # Core devices
-        self.sim.device = "cuda:0"  # sim tensors/devices
-        self.sim.use_gpu_pipeline = True  # GPU pipeline for sim
-        self.sim.physx.use_gpu = True  # PhysX on GPU
-        self.sim.enable_scene_query_support = False  # if you don’t need raycasts/queries
-        # CPU threads for what remains on CPU:
-        self.sim.physx.num_threads = max(8, os.cpu_count() // 2)
+        self.sim.device = "cuda:0"
+        self.sim.use_gpu_pipeline = True
+        self.sim.physx.use_gpu = True
+        self.sim.enable_scene_query_support = False

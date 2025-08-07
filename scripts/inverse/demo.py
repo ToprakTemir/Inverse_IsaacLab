@@ -12,9 +12,9 @@ import torch
 from disassembly.NN import MLPPolicy
 
 # Create env
-env = ManagerBasedRLEnv(AssembledStartEnvCfg())
+env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=3))
 
-policy_path = "checkpoints/ppo_disassembly_best.pth"
+policy_path = "checkpoints/run-ppo-20250807-112615-best.pth"
 # policy_path = None
 
 obs_dim = env.observation_space["policy"].shape[1]
@@ -23,7 +23,7 @@ print(f"obs_dim: {obs_dim}, act_dim: {act_dim}")
 
 # Load policy
 if policy_path:
-    policy = MLPPolicy(obs_dim, act_dim)
+    policy = MLPPolicy(obs_dim, act_dim, hidden=512)
     policy_weights = torch.load(policy_path, map_location=env.device)
     policy.load_state_dict(policy_weights)
     policy.eval()

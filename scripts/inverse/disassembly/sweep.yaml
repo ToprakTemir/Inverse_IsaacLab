@@ -1,7 +1,7 @@
 program: train_disassembly.py
 method: bayes
 metric:
-  name: rollout/mean_reward
+  name: rollout/success_rate
   goal: maximize
 
 early_terminate:
