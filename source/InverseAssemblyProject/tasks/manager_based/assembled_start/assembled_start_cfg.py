@@ -157,17 +157,31 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         debug_vis=False, # Set to True to visualize 3d force arrows
     )
 
-    moved_obj: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/disk",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path="../assets/task1_moved.usd",
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0, max_contact_impulse=10.0)),
-    )
 
     # Fixed base / rod
     fixed_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/base",
         spawn=sim_utils.UsdFileCfg(usd_path="../assets/task1_fixed.usd"),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.25, 0.55, 0.1),  # Initial position in front of the robot
+            rot=(0.7071, 0.7071, 0, 0),  # Rotate 90 degrees around x-axis
+            lin_vel=(0.0, 0.0, 0.0),  # Initial linear velocity
+            ang_vel=(0.0, 0.0, 0.0),  # Initial angular velocity
+        ),
+    )
+
+    moved_obj: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/disk",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path="../assets/task1_moved.usd",
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0, max_contact_impulse=1.0)
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.3094, 0.4599, 0.0786),  # Initial position inserted into the base
+            rot=(0.7071, 0, 0, 0.7071),  # Rotate 90 degrees around x-axis
+            lin_vel=(0.0, 0.0, 0.0),  # Initial linear velocity
+            ang_vel=(0.0, 0.0, 0.0),  # Initial angular velocity
+        ),
     )
 
     # Lighting
@@ -202,21 +216,19 @@ class ActionsCfg:
             ik_method="pinv",  # Pseudo-inverse method
         )
     )
-    ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
-        asset_name="robot",
-        joint_names=["Slider_1"],
-        rescale_to_limits=True,
-        scale=1.0,  # Scale the action to the joint limits
-    )
-
-    # ee_binary_action = mdp.BinaryJointPositionActionCfg(
+    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
     #     asset_name="robot",
     #     joint_names=["Slider_1"],
-    #     open_command_expr={"Slider_1": 0.0},  # Open gripper
-    #     close_command_expr={"Slider_1": 0.5},  # Close gripper
-    #     rescale_to_limits=True,  # Rescale to joint limits
+    #     rescale_to_limits=True,
     #     scale=1.0,  # Scale the action to the joint limits
     # )
+
+    ee_binary_action = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["Slider_1"],
+        open_command_expr={"Slider_1": 0.0},  # Open gripper
+        close_command_expr={"Slider_1": 1.0},  # Close gripper
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -270,8 +282,8 @@ class EventCfg:
     #     },
     # )
 
-    reset_into_assembled_pose = EventTerm(
-        func=mdp.reset_to_assembled_pose,
+    reset_disk_to_assembled_pose = EventTerm(
+        func=mdp.reset_disk_to_assembled_pose,
         mode="reset",
         params={
             "base_asset_cfg": SceneEntityCfg("fixed_obj"),

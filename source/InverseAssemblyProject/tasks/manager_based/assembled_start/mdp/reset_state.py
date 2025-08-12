@@ -65,7 +65,7 @@ def reset_base_pose(env, env_ids, asset_cfg: SceneEntityCfg):
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
     base.write_root_state_to_sim(root_state[env_ids], env_ids)
 
-def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
+def reset_disk_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
     """Reset such that the disk is already inserted to the base."""
 
     reset_base_pose(env, env_ids, base_asset_cfg)
@@ -75,7 +75,7 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     # base's transform
     local_pos = torch.tensor([0.25, 0.55, 0.1], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # offset of the tip of the base
-    local_pos += torch.tensor([0.0594, -0.09807075, -0.0214], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
+    local_pos += torch.tensor([0.0594, -0.09007075, -0.0214], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # local_pos = torch.tensor([0, 0, 0], device=disk .data.root_pos_w.device).repeat(len(env_ids), 1)
 
     new_quat = torch.tensor([0.7071, 0, 0, 0.7071], device=disk.data.root_quat_w.device).repeat(len(env_ids), 1)
@@ -91,6 +91,3 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
 
     disk.write_root_state_to_sim(root_state[env_ids], env_ids)
-
-
-
