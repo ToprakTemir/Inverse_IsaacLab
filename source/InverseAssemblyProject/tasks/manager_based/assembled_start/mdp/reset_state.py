@@ -47,7 +47,7 @@ def reset_base_pose(env, env_ids, asset_cfg: SceneEntityCfg):
 
     base = env.scene[asset_cfg.name]
 
-    xy = (0.4, 0.55)  # fixed position in front of the robot
+    xy = (0.25, 0.55)  # fixed position in front of the robot
     z = 0.1  # a bit in the air
 
     # rotate 90 degrees around x-axis
@@ -73,7 +73,7 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     disk = env.scene[disk_asset_cfg.name]
 
     # base's transform
-    local_pos = torch.tensor([0.4, 0.55, 0.1], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
+    local_pos = torch.tensor([0.25, 0.55, 0.1], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # offset of the tip of the base
     local_pos += torch.tensor([0.0594, -0.09807075, -0.0214], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # local_pos = torch.tensor([0, 0, 0], device=disk .data.root_pos_w.device).repeat(len(env_ids), 1)
@@ -86,9 +86,10 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     ang = disk.data.root_ang_vel_w.clone()
     pos[env_ids] = local_pos + env.scene.env_origins[env_ids]
     quat[env_ids] = new_quat
-    # lin[env_ids] = 0.0
-    # ang[env_ids] = 0.0
+    lin[env_ids] = 0.0
+    ang[env_ids] = 0.0
     root_state = torch.cat([pos, quat, lin, ang], dim=-1)  # (num_envs, 14)
+
     disk.write_root_state_to_sim(root_state[env_ids], env_ids)
 
 

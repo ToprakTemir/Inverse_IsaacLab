@@ -4,6 +4,7 @@ import math
 from pygame.gfxdraw import aatrigon
 from sympy.physics.vector import kinematic_equations
 
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.sim import activate_contact_sensors
 from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
@@ -28,8 +29,8 @@ from . import mdp
 # Scene
 # --------------------------------------------------------------------------------------
 
-ARM_KP = 80.0 # Proportional gain for the arm joints
-ARM_KD = 10.0 # Derivative gain for the arm joints
+ARM_KP = 1500.0 # Proportional gain for the arm joints
+ARM_KD = 120.0 # Derivative gain for the arm joints
 
 @configclass
 class AssembledStartSceneCfg(InteractiveSceneCfg):
@@ -47,6 +48,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             usd_path="../assets/robot.usd",
             activate_contact_sensors=True,  # Enable contact sensors for the robot
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True,
                 rigid_body_enabled=True,
                 max_linear_velocity=1000.0,
                 max_angular_velocity=1000.0,
@@ -70,23 +72,22 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
                 "wrist_1_joint": 0.0,
                 "wrist_2_joint": 0.0,
                 "wrist_3_joint": 0.0,
-                # "finger_joint": 0.0,  # Gripper joint
+                "Slider_1": 0.0,
+                "Slider_2": 0.0,
             },
         ),
         actuators={
             "shoulder_pan_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["shoulder_pan_joint"],
-                effort_limit_sim
-                =100.0,
-                velocity_limit_sim
-                =100.0,
+                effort_limit_sim=10000.0,
+                velocity_limit_sim=100.0,
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
             "shoulder_lift_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["shoulder_lift_joint"],
                 effort_limit_sim
-                =100.0,
+                =10000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -95,7 +96,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "elbow_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["elbow_joint"],
                 effort_limit_sim
-                =100.0,
+                =10000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -104,7 +105,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "wrist_1_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_1_joint"],
                 effort_limit_sim
-                =100.0,
+                =1000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -113,7 +114,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "wrist_2_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_2_joint"],
                 effort_limit_sim
-                =100.0,
+                =1000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -122,7 +123,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "wrist_3_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["wrist_3_joint"],
                 effort_limit_sim
-                =100.0,
+                =1000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -131,7 +132,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "Slider_1": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_1"],
                 effort_limit_sim
-                =100.0,
+                =1000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -140,7 +141,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             "Slider_2": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_2"],
                 effort_limit_sim
-                =100.0,
+                =1000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -149,11 +150,18 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         },
     )
 
+    ee_ft_sensor = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/robot/ur3e/RobotIq_Hand_E_base/ee_base_link",
+        update_period=0.0,  # 0.0 means update every step
+        history_length=0,  # No history, only current contact forces
+        debug_vis=False, # Set to True to visualize 3d force arrows
+    )
+
     moved_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/disk",
         spawn=sim_utils.UsdFileCfg(
             usd_path="../assets/task1_moved.usd",
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0)),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0, max_contact_impulse=10.0)),
     )
 
     # Fixed base / rod
@@ -176,27 +184,38 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action space: joint angle targets for the robot."""
 
-    joint_angles = mdp.JointPositionToLimitsActionCfg(
+    # joint_angles = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1"],
+    #     rescale_to_limits=True
+    # )
+
+
+    ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
-        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1", "Slider_2"],
-        rescale_to_limits=True
+        joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+        body_name = "ee_base_link",
+        scale=(0.15, 0.15, 0.15, 0.15, 0.15, 0.15),
+        controller=mdp.DifferentialIKControllerCfg(
+            command_type = "pose",  # position: 3d, pose: 6d (position + orientation)
+            use_relative_mode=True,  # Relative changes in position/pose
+            ik_method="pinv",  # Pseudo-inverse method
+        )
+    )
+    ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot",
+        joint_names=["Slider_1"],
+        rescale_to_limits=True,
+        scale=1.0,  # Scale the action to the joint limits
     )
 
-
-    # ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
+    # ee_binary_action = mdp.BinaryJointPositionActionCfg(
     #     asset_name="robot",
-    #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
-    #     body_name = "ee_base_link",
-    #     controller=mdp.DifferentialIKControllerCfg(
-    #         command_type = "position",  # position: 3d, pose: 6d (position + orientation)
-    #         use_relative_mode=True,  # Relative changes in position/pose
-    #         ik_method="pinv",  # Pseudo-inverse method
-    #     )
-    # )
-    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["Slider_1", "Slider_2"],
-    #     rescale_to_limits=True,
+    #     joint_names=["Slider_1"],
+    #     open_command_expr={"Slider_1": 0.0},  # Open gripper
+    #     close_command_expr={"Slider_1": 0.5},  # Close gripper
+    #     rescale_to_limits=True,  # Rescale to joint limits
+    #     scale=1.0,  # Scale the action to the joint limits
     # )
 
 
@@ -214,6 +233,7 @@ class ObservationsCfg:
         joint_positions = ObsTerm(func=mdp.joint_pos_rel)
         object_pos = ObsTerm(func=mdp.object_pos, params={"asset_cfg": SceneEntityCfg("moved_obj")})
         target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")})
+        ft_sensor = ObsTerm(func=mdp.ee_ft_sensor, params={"asset_cfg": SceneEntityCfg("robot")})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -280,8 +300,8 @@ class RewardsCfg:
 class TerminationsCfg:
     """Episode termination conditions."""
 
-    time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    success = DoneTerm(func=mdp.disassembly_success)
+    # time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    # success = DoneTerm(func=mdp.disassembly_success)
     # failure_out_of_bounds = DoneTerm(func=mdp.out_of_bounds, params={"limit": 1.5, "min_z": -0.2})
 
 
@@ -319,9 +339,9 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
         self.rewards.control_penalty.weight = float(self.rw_control_penalty)
 
 
-        self.decimation = 2
-        self.sim.dt = 1.0 / 60.0
-        self.episode_length_s = 8.0
+        self.decimation = 1
+        self.sim.dt = 1.0 / 120
+        self.episode_length_s = 12.0
         self.sim.render_interval = self.decimation
         self.sim.physx.gpu_max_rigid_patch_count = 2621440
         self.sim.physx.gpu_collision_stack_size = 2 ** 29

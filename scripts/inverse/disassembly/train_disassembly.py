@@ -213,7 +213,7 @@ if __name__ == "__main__":
                name=config.run_name,
                config=config.__dict__, # default hyper-params
                save_code=True)
-    wandb.define_metric("rollout/success_rate", summary="max")
+    wandb.define_metric("rollout/success_rate")
 
     # If launched by wandb agent, parameters are injected automatically
     if wandb.run is not None and wandb.config is not None:
