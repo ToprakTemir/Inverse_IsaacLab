@@ -24,6 +24,10 @@ obs_dim = env.observation_space["policy"].shape[1]
 act_dim = env.action_space.shape[1]
 print(f"obs_dim: {obs_dim}, act_dim: {act_dim}")
 
+# print out the moved object's mass
+moved_obj = env.scene["moved_obj"]
+print(f"Moved object mass: {moved_obj.data.mass.item()} kg")
+
 # Load policy
 if policy_path:
     policy = MLPPolicy(obs_dim, act_dim, hidden=256)
@@ -49,35 +53,6 @@ else:
 
 # Run demo
 obs, info = env.reset()
-
-for _ in range(10):
-    env.sim.step(render=True)  # step the simulation to initialize the scene
-    time.sleep(0.1)  # wait a bit to see the initial state
-
-
-# while True:
-    # sleep
-    # time.sleep(0.01)
-    # env.render()
-
-    # robot = env.scene["robot"]
-    #
-    # # find indices for your sliders
-    # jidx = [i for i, n in enumerate(robot.data.joint_names) if n in ("Slider_1")]
-    # print("[DEBUG] indices:", jidx)
-    #
-    # # (a) check limits
-    # print("[DEBUG] limits low/high:", robot.data.joint_pos_limits[0, jidx])
-    #
-    # # (b) try opening once
-    # q_target = robot.data.default_joint_pos.clone()
-    # print("[DEBUG] default joint positions:", q_target)
-    # for i in jidx:
-    #     q_target[:, i] = 0.0245  # inside limits
-    # print("[DEBUG] target joint positions:", q_target)
-    # robot.set_joint_position_target(q_target)  # API is available on Articulation
-    # env.sim.step(render=True)
-
 while True:
     obs = obs["policy"]  # Get the policy observation
     action = act(obs)

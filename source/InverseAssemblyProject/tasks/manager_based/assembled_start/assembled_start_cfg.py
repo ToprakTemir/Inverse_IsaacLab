@@ -154,7 +154,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/base",
         spawn=sim_utils.UsdFileCfg(usd_path="../assets/task1_fixed.usd"),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(0.25, 0.55, 0.1),  # Initial position in front of the robot
+            pos=(0.25, 0.55, 0.15),  # Initial position in front of the robot
             rot=(0.7071, 0.7071, 0, 0),  # Rotate 90 degrees around x-axis
             lin_vel=(0.0, 0.0, 0.0),  # Initial linear velocity
             ang_vel=(0.0, 0.0, 0.0),  # Initial angular velocity
@@ -168,7 +168,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
             rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0, max_contact_impulse=1.0)
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(0.3094, 0.4599, 0.0786),  # Initial position inserted into the base
+            pos=(0.3094, 0.4599, 0.1286),  # Initial position inserted into the base
             rot=(0.7071, 0, 0, 0.7071),  # Rotate 90 degrees around x-axis
             lin_vel=(0.0, 0.0, 0.0),  # Initial linear velocity
             ang_vel=(0.0, 0.0, 0.0),  # Initial angular velocity
@@ -311,8 +311,7 @@ class TerminationsCfg:
     """Episode termination conditions."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # success = DoneTerm(func=mdp.disassembly_success)
-    # failure_out_of_bounds = DoneTerm(func=mdp.out_of_bounds, params={"limit": 1.5, "min_z": -0.2})
+    disassembly_success = DoneTerm(func=mdp.disassembly_success, time_out=False)
 
 
 # --------------------------------------------------------------------------------------

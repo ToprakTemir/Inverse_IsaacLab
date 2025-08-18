@@ -48,7 +48,7 @@ def reset_base_pose(env, env_ids, asset_cfg: SceneEntityCfg):
     base = env.scene[asset_cfg.name]
 
     xy = (0.25, 0.55)  # fixed position in front of the robot
-    z = 0.1  # a bit in the air
+    z = 0.15  # a bit in the air
 
     # rotate 90 degrees around x-axis
     new_quat = torch.tensor([0.7071, 0.7071, 0, 0], device=base.data.root_quat_w.device).repeat(len(env_ids), 1)
@@ -73,7 +73,7 @@ def reset_disk_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, d
     disk = env.scene[disk_asset_cfg.name]
 
     # base's transform
-    local_pos = torch.tensor([0.25, 0.55, 0.1], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
+    local_pos = torch.tensor([0.25, 0.55, 0.15], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # offset of the tip of the base
     local_pos += torch.tensor([0.0594, -0.09007075, -0.0214], device=disk.data.root_pos_w.device).repeat(len(env_ids), 1)
     # local_pos = torch.tensor([0, 0, 0], device=disk .data.root_pos_w.device).repeat(len(env_ids), 1)
