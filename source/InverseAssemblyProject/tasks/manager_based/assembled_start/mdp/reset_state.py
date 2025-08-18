@@ -4,11 +4,11 @@ from isaaclab.managers import SceneEntityCfg
 
 def reset_robot_joints(env, env_ids, asset_cfg: SceneEntityCfg):
     robot = env.scene[asset_cfg.name]
-    # modify only the selected envs
     noise = 0.05 * (2 * torch.rand_like(robot.data.joint_pos[env_ids]) - 1.0)
     joint_pos = robot.data.joint_pos.clone()
     joint_vel = robot.data.joint_vel.clone()
-    joint_pos[env_ids] = noise
+    default_joint_pos = robot.data.default_joint_pos.clone()
+    joint_pos[env_ids] = default_joint_pos[env_ids] + noise
     joint_vel[env_ids] = 0.0
     robot.write_joint_state_to_sim(joint_pos, joint_vel)
 

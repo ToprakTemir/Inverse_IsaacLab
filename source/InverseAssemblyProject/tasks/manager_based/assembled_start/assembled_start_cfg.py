@@ -20,7 +20,7 @@ from isaaclab.managers import (
     SceneEntityCfg,
 )
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
 
 from . import mdp
 
@@ -29,8 +29,8 @@ from . import mdp
 # Scene
 # --------------------------------------------------------------------------------------
 
-ARM_KP = 1500.0 # Proportional gain for the arm joints
-ARM_KD = 120.0 # Derivative gain for the arm joints
+ARM_KP = 15000.0 # Proportional gain for the arm joints
+ARM_KD = 1200.0 # Derivative gain for the arm joints
 
 @configclass
 class AssembledStartSceneCfg(InteractiveSceneCfg):
@@ -129,19 +129,10 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
                 stiffness=ARM_KP,
                 damping=ARM_KD,
             ),
-            "Slider_1": ImplicitActuatorCfg(
+            "Slider_1_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_1"],
                 effort_limit_sim
-                =1000.0,
-                velocity_limit_sim
-                =100.0,
-                stiffness=ARM_KP,
-                damping=ARM_KD,
-            ),
-            "Slider_2": ImplicitActuatorCfg(
-                joint_names_expr=["Slider_2"],
-                effort_limit_sim
-                =1000.0,
+                =100000000.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -205,15 +196,15 @@ class ActionsCfg:
     # )
 
 
-    ee_pose_delta = mdp.DifferentialInverseKinematicsActionCfg(
+    ee_IK_delta = mdp.DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
         joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
         body_name = "ee_base_link",
-        scale=(0.15, 0.15, 0.15, 0.15, 0.15, 0.15),
+        scale=0.15,
         controller=mdp.DifferentialIKControllerCfg(
             command_type = "pose",  # position: 3d, pose: 6d (position + orientation)
             use_relative_mode=True,  # Relative changes in position/pose
-            ik_method="pinv",  # Pseudo-inverse method
+            ik_method="dls",
         )
     )
     # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
@@ -223,12 +214,19 @@ class ActionsCfg:
     #     scale=1.0,  # Scale the action to the joint limits
     # )
 
-    ee_binary_action = mdp.BinaryJointPositionActionCfg(
+    gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["Slider_1"],
         open_command_expr={"Slider_1": 0.0},  # Open gripper
-        close_command_expr={"Slider_1": 1.0},  # Close gripper
+        close_command_expr={"Slider_1": 0.025},  # Close gripper
     )
+
+    # gripper_action = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["Slider_1"],
+    #     rescale_to_limits=True,
+    #     scale=1.0,  # Scale the action to the joint limits
+    # )
 
 
 # --------------------------------------------------------------------------------------
@@ -299,10 +297,10 @@ class EventCfg:
 class RewardsCfg:
     """Reward shaping terms."""
 
-    disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
-    success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
-    proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0, params={"asset_cfg": SceneEntityCfg("moved_obj")})
-    control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
+    # disassembly_progress_reward = RewTerm(func=mdp.disassembly_dist_reward, weight=2.0)
+    # success_reward = RewTerm(func=mdp.disassembly_success_reward, weight=1.0)
+    # proximity_reward = RewTerm(func=mdp.object_ee_proximity_reward, weight=1.0, params={"asset_cfg": SceneEntityCfg("moved_obj")})
+    # control_penalty = RewTerm(func=mdp.control_penalty, weight=0.01)
 
 
 # --------------------------------------------------------------------------------------
@@ -312,7 +310,7 @@ class RewardsCfg:
 class TerminationsCfg:
     """Episode termination conditions."""
 
-    # time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # success = DoneTerm(func=mdp.disassembly_success)
     # failure_out_of_bounds = DoneTerm(func=mdp.out_of_bounds, params={"limit": 1.5, "min_z": -0.2})
 
@@ -323,7 +321,7 @@ class TerminationsCfg:
 @configclass
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    # externally overridable knobs (accepted by constructor)
+    # externally overridable knobs (accepted by constructor)I'm trying to collect demonstrations of robot holding something and putting it somewhere else in Isaaclab using record_demos.py script preinstalled with isaaclab
     num_envs: int = 1            # will be pushed to scene.num_envs
     env_spacing: float = 2.5     # will be pushed to scene.env_spacing
 
@@ -339,29 +337,30 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
 
+    # rewards.disassembly_progress_reward.weight = float(rw_progress)
+    # rewards.success_reward.weight = float(rw_success)
+    # rewards.proximity_reward.weight = float(rw_proximity)
+    # rewards.control_penalty.weight = float(rw_control_penalty)
+
+    sim = sim_utils.SimulationCfg()
+    sim.dt = 1.0 / 360
+    sim.physx.max_position_iteration_count = 80
+    episode_length_s = 24.0
+    sim.physx.gpu_max_rigid_patch_count = 2621440
+    sim.physx.gpu_collision_stack_size = 2 ** 29
+    sim.device = "cuda:0"
+    sim.use_gpu_pipeline = True
+    sim.physx.use_gpu = True
+    sim.enable_scene_query_support = False
+
+
     def __post_init__(self):
         # propagate top-level overrides down into nested configs
         self.scene.num_envs = int(self.num_envs)
         self.scene.env_spacing = float(self.env_spacing)
 
-        # IMPORTANT: push reward weights to the nested rewards cfg
-        self.rewards.disassembly_progress_reward.weight = float(self.rw_progress)
-        self.rewards.success_reward.weight = float(self.rw_success)
-        self.rewards.proximity_reward.weight = float(self.rw_proximity)
-        self.rewards.control_penalty.weight = float(self.rw_control_penalty)
-
-
-        self.decimation = 1
-        self.sim.dt = 1.0 / 120
-        self.episode_length_s = 12.0
+        self.decimation = 3 # the period of the policy being queried, in simulation steps
         self.sim.render_interval = self.decimation
-        self.sim.physx.gpu_max_rigid_patch_count = 2621440
-        self.sim.physx.gpu_collision_stack_size = 2 ** 29
 
-        self.viewer.eye = (1.5, 1.5, 1.2)
-        self.viewer.lookat = (0.0, 0.0, 0.5)
-
-        self.sim.device = "cuda:0"
-        self.sim.use_gpu_pipeline = True
-        self.sim.physx.use_gpu = True
-        self.sim.enable_scene_query_support = False
+        self.viewer.eye = (0.5, 0.25, 0.2)
+        self.viewer.lookat = (0.25, 0.5, 0.25)
