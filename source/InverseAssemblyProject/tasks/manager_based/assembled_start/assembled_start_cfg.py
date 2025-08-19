@@ -41,7 +41,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(size=(8192.0, 8192.0)),
     )
 
-    # UR3e robot with gripper
+    # UR5e robot with gripper
     robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
@@ -142,7 +142,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
     )
 
     ee_ft_sensor = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/robot/ur3e/RobotIq_Hand_E_base/ee_base_link",
+        prim_path="{ENV_REGEX_NS}/robot/ur5e/RobotIq_Hand_E_base/ee_base_link",
         update_period=0.0,  # 0.0 means update every step
         history_length=0,  # No history, only current contact forces
         debug_vis=False, # Set to True to visualize 3d force arrows
@@ -311,7 +311,7 @@ class TerminationsCfg:
     """Episode termination conditions."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    disassembly_success = DoneTerm(func=mdp.disassembly_success, time_out=False)
+    success = DoneTerm(func=mdp.disassembly_success, time_out=False)
 
 
 # --------------------------------------------------------------------------------------
@@ -343,7 +343,8 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
     sim = sim_utils.SimulationCfg()
     sim.dt = 1.0 / 360
-    sim.physx.max_position_iteration_count = 80
+    sim.physx.max_position_iteration_count = 200
+    sim.physx.max_velocity_iteration_count = 20
     episode_length_s = 24.0
     sim.physx.gpu_max_rigid_patch_count = 2621440
     sim.physx.gpu_collision_stack_size = 2 ** 29

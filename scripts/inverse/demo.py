@@ -45,6 +45,7 @@ else:
 # Run demo
 obs, info = env.reset()
 while True:
+    print("in loop")
     obs = obs["policy"]  # Get the policy observation
     action = act(obs)
     obs, rew, terminated, time_out, info = env.step(action)
