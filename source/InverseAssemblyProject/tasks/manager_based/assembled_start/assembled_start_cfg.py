@@ -1,11 +1,6 @@
-import os
 import math
 
-from pygame.gfxdraw import aatrigon
-from sympy.physics.vector import kinematic_equations
-
 from isaaclab.sensors import ContactSensorCfg
-from isaaclab.sim import activate_contact_sensors
 from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 
@@ -20,7 +15,7 @@ from isaaclab.managers import (
     SceneEntityCfg,
 )
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
+from isaaclab.actuators import ImplicitActuatorCfg
 
 from . import mdp
 
@@ -240,10 +235,12 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Policy observation vector (concatenated)."""
 
-        joint_positions = ObsTerm(func=mdp.joint_pos_rel)
-        object_pos = ObsTerm(func=mdp.object_pos, params={"asset_cfg": SceneEntityCfg("moved_obj")})
-        target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")})
-        ft_sensor = ObsTerm(func=mdp.ee_ft_sensor, params={"asset_cfg": SceneEntityCfg("robot")})
+        joint_positions = ObsTerm(func=mdp.joint_pos_rel) # 8D
+        object_pos = ObsTerm(func=mdp.object_pos, params={"asset_cfg": SceneEntityCfg("moved_obj")}) # 3D
+        object_quat = ObsTerm(func=mdp.object_quat, params={"asset_cfg": SceneEntityCfg("moved_obj")}) # 4D
+        target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")}) # 3D
+        ft_sensor = ObsTerm(func=mdp.ee_ft_sensor, params={"asset_cfg": SceneEntityCfg("robot")}) # 6D (force + torque)
+        # object_target_distance = # TODO: to do or not?
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -321,8 +318,8 @@ class TerminationsCfg:
 class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
     # externally overridable knobs (accepted by constructor)I'm trying to collect demonstrations of robot holding something and putting it somewhere else in Isaaclab using record_demos.py script preinstalled with isaaclab
-    num_envs: int = 1            # will be pushed to scene.num_envs
-    env_spacing: float = 2.5     # will be pushed to scene.env_spacing
+    num_envs: int = 1024
+    env_spacing: float = 2.5
 
     rw_progress: float = 2.0
     rw_success: float = 1.0

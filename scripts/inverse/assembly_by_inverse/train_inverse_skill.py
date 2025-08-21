@@ -1,16 +1,20 @@
+from stable_baselines3.common.callbacks import CheckpointCallback, StopTrainingOnNoModelImprovement, EvalCallback
+
 from isaaclab.app import AppLauncher
 
-app_launcher = AppLauncher(headless=False)
+app_launcher = AppLauncher(headless=True)
 app = app_launcher.app
 
 from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg import AssembledStartEnvCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
 import os
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Dict
 
 import numpy as np
 import gymnasium as gym
+import h5py
+import datetime
 
 import torch
 import torch.nn as nn
@@ -32,34 +36,7 @@ from pretrain_policy import (
     train_bc_policy,
 )
 
-
-# ---------------------------- Demo Loading ---------------------------- #
-
-def load_demos_from_npz(npz_path: str) -> List[dict]:
-    """
-    Minimal example loader. Expected file format:
-      observations: list of arrays or a single (N, T_i, obs_dim) concatenated
-      actions:      list of arrays or (N, T_i, act_dim)
-    Replace with your actual demo reader (Minari-like, your own logger, etc).
-    """
-    data = np.load(npz_path, allow_pickle=True)
-    demos = []
-
-    obs = data["observations"]  # could be an array of objects or a 3D array
-    acts = data["actions"]
-
-    if obs.dtype == object:
-        # list of trajectories
-        assert len(obs) == len(acts)
-        for o, a in zip(obs, acts):
-            demos.append({"observations": o, "actions": a})
-    else:
-        # stacked; assume first dim = episodes
-        assert obs.shape[0] == acts.shape[0]
-        for i in range(obs.shape[0]):
-            demos.append({"observations": obs[i], "actions": acts[i]})
-    return demos
-
+from helpers.load_demos import load_demos_from_hdf5
 
 # -------------------- Reward Wrapper using Phase --------------------- #
 
@@ -123,15 +100,24 @@ class InverseAgent(nn.Module):
         env: ManagerBasedRLEnv,
         demos: List[dict],
         validation_demos: Optional[List[dict]] = None,
-        non_robot_indices_in_obs: Optional[Sequence[int]] = None,
+        non_robot_indices_in_obs: Optional[Sequence[int] | slice] = None,
         hyperparams: Optional[dict] = None,
     ):
         super().__init__()
         self.env = env
         self.demos = demos
         self.validation_demos = validation_demos
-        self.non_robot_indices_in_obs = list(non_robot_indices_in_obs) if non_robot_indices_in_obs else []
         self.hyperparams = hyperparams or {}
+
+        if non_robot_indices_in_obs is None:
+            self.non_robot_indices_in_obs = []
+        elif isinstance(non_robot_indices_in_obs, slice):
+            self.non_robot_indices_in_obs = list(range(*non_robot_indices_in_obs.indices(env.observation_space["policy"].shape[-1])))
+        elif isinstance(non_robot_indices_in_obs, (list, tuple)):
+            self.non_robot_indices_in_obs = list(non_robot_indices_in_obs)
+        else:
+            raise ValueError(f"Unsupported type for non_robot_indices_in_obs: {type(non_robot_indices_in_obs)}")
+
 
         self.phase_evaluator: Optional[PhaseEvaluator] = None
         self.phase_evaluator_trained: bool = False
@@ -153,6 +139,8 @@ class InverseAgent(nn.Module):
 
     def train_phase_evaluator(self, save_best_path: Optional[str] = None) -> None:
         # infer obs_dim from demos
+        # with h5py.File(self.demos[0]["path"], 'r') as f:
+
         sample_obs = self.demos[0]["observations"][0]
         obs_dim_full = sample_obs.shape[-1]
         self.build_phase_evaluator(obs_dim_full)
@@ -297,7 +285,7 @@ class InverseAgent(nn.Module):
                     print(f"[PPO Init] Loaded {mapped} parameter tensors from BC policy into PPO actor.")
         return model
 
-    def finetune_with_ppo(self, total_timesteps: int, reward_weight: float = 1.0, log_dir: Optional[str] = None):
+    def finetune_with_ppo(self, total_timesteps: int, reward_weight: float = 1.0, model_dir: str = None, log_dir: Optional[str] = None):
         env_wrapped = self._make_wrapped_env(reward_weight=reward_weight)
 
         # vectorize as DummyVec for SB3
@@ -307,8 +295,25 @@ class InverseAgent(nn.Module):
 
         if log_dir is not None:
             os.makedirs(log_dir, exist_ok=True)
+        if model_dir is not None:
+            os.makedirs(model_dir, exist_ok=True)
 
-        model.learn(total_timesteps=total_timesteps, progress_bar=True)
+        total_timesteps = self.total_steps_for_inverse_skill
+        save_freq = 64_000
+        report_freq = 1000
+
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_dir)
+        stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
+        eval_callback = EvalCallback(
+            env,
+            best_model_save_path=model_dir,
+            log_path=log_dir,
+            eval_freq=report_freq,
+            callback_after_eval=stop_callback
+        )
+        callback = [checkpoint_callback, stop_callback, eval_callback]
+
+        model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=callback)
         self.inverse_model = model
 
     # ----------------------------- IO ------------------------------- #
@@ -341,25 +346,23 @@ class InverseAgent(nn.Module):
 # ----------------------------- Script ------------------------------- #
 
 if __name__ == "__main__":
-    # 1) Create Isaac Lab env (Manager-Based RL)
+    # 1) Create env (Manager-Based RL)
     cfg = AssembledStartEnvCfg()
     env = ManagerBasedRLEnv(cfg)
 
-    # 2) Load demonstrations (replace with your own loader!)
-    # Example expected .npz with arrays/lists of trajectories
-    # npz_path = "path/to/your_demos.npz"
-    # demos = load_demos_from_npz(npz_path)
-    # val_demos = load_demos_from_npz("path/to/val_demos.npz")
-    # For now, raise if you haven't set this up:
-    raise_if_missing = False  # flip to True to enforce
-    demos: List[dict] = []    # fill me with your (obs, actions)
-    val_demos: Optional[List[dict]] = None
+    # 2) Load demos
+    demo_path = "../datasets/disassembly_15.hdf5"
+    demos = load_demos_from_hdf5(demo_path)
+    print(f"Loaded {len(demos)} demos from {os.path.abspath(demo_path)}")
+    val_demos_path = "../datasets/disassembly_validation_5.hdf5"
+    val_demos = load_demos_from_hdf5(val_demos_path)
+    print(f"Loaded {len(val_demos)} validation demos from {os.path.abspath(val_demos_path)}")
 
-    if raise_if_missing and len(demos) == 0:
-        raise RuntimeError("Please load your demonstrations into `demos` before running.")
 
-    # 3) Configure indices (non-robot obs) and hyperparams
-    non_robot_indices = []  # e.g., [0,1,2] as you used for object position
+    # 3) Hyperparameters
+
+    # first 8 dimensions are robot joints (including gripper), rest are non-robot
+    non_robot_indices = slice(8, None) # or list of indices, e.g. [8, 9, 10, ...]
     hparams = dict(
         # phase/evaluator
         phase_hidden=(256, 256),
@@ -401,14 +404,17 @@ if __name__ == "__main__":
         hyperparams=hparams,
     )
 
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M")
+    os.makedirs(f"models/{timestamp}", exist_ok=False)
+
     # 4) Train the Phase Evaluator (Evaluator)
-    # agent.train_phase_evaluator(save_best_path="checkpoints/phase_evaluator_best.pth")
+    # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth")
+    agent.load_phase_evaluator(f"models/2025-08-21-18:55/phase_evaluator_best.pth", obs_dim_full=16)
 
     # 5) Pretrain BC policy
-    # agent.pretrain_bc_policy(save_best_path="checkpoints/bc_policy_best.pth")
+    agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth")
+    # agent.load_pretrained_bc_policy(f"models/2025-08-21-18:55/bc_policy_best.pth", obs_dim_full=env.observation_space["policy"].shape[1], act_dim=env.action_space.shape[0])
 
     # 6) PPO Finetune with phase-shaped rewards
-    # agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")
-
-    # 7) Save PPO model
-    # agent.save_inverse_model("checkpoints/inverse_skill_ppo.zip")
+    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")
+    agent.save_inverse_model(f"models/{timestamp}/final_inverse_model.zip")

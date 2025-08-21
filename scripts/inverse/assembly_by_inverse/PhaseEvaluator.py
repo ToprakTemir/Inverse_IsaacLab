@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 
 class PhaseEvaluator(nn.Module):
     """
-    Predicts a normalized phase in [0,1] given an observation (optionally with
+    Predicts a normalized phase in [0,1] given an observation (generally with
     robot dimensions removed).
     """
     def __init__(self, input_dim: int, hidden_dims: Sequence[int] = (256, 256), dropout: float = 0.0):
@@ -81,9 +81,6 @@ class PhaseDemoDataset(Dataset):
         x, y = self.samples[idx]
         xt = torch.from_numpy(x)
         yt = torch.tensor([y], dtype=torch.float32)
-        if self.device is not None:
-            xt = xt.to(self.device)
-            yt = yt.to(self.device)
         return xt, yt
 
 
@@ -134,6 +131,7 @@ def train_phase_evaluator(
             drop_last=False,
             pin_memory=(device.type == "cuda"),
         )
+    print(f"Training PhaseEvaluator with {train_dataset} dataset")
 
     optim_ = optim.Adam(model.parameters(), lr=cfg.lr)
     mse = nn.MSELoss()
@@ -171,30 +169,37 @@ def train_phase_evaluator(
 
         epoch_loss /= max(1, len(train_loader))
         history["train_loss"].append(epoch_loss)
+        print(f"Epoch {epoch + 1}/{cfg.epochs}, Train Loss: {epoch_loss:.4f}")
 
         # validation
-        if val_loader is not None and (epoch % cfg.val_period == 0):
-            model.eval()
-            vals = []
-            with torch.no_grad():
-                for xb, yb in val_loader:
-                    xb = xb.to(device, non_blocking=True)
-                    yb = yb.to(device, non_blocking=True)
-                    pred = model(xb).squeeze(-1)
-                    vals.append(mse(pred, yb.squeeze(-1)).item())
-            v = float(np.mean(vals)) if len(vals) else epoch_loss
-            history["val_loss"].append(v)
+        if val_loader is None or (epoch % cfg.val_period != 0):
+            continue
 
-            improved = v < best_val
-            if improved:
-                best_val = v
-                bad = 0
-                if save_best_path is not None:
-                    torch.save(model.state_dict(), save_best_path)
-            else:
-                bad += 1
-                if bad * cfg.val_period >= cfg.patience:
-                    # early stop
-                    break
+        if save_best_path is not None:
+            print(f"Saving best model to {save_best_path}")
+
+
+        model.eval()
+        vals = []
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb = xb.to(device, non_blocking=True)
+                yb = yb.to(device, non_blocking=True)
+                pred = model(xb).squeeze(-1)
+                vals.append(mse(pred, yb.squeeze(-1)).item())
+        v = float(np.mean(vals)) if len(vals) else epoch_loss
+        history["val_loss"].append(v)
+
+        improved = v < best_val
+        if improved:
+            best_val = v
+            bad = 0
+            if save_best_path is not None:
+                torch.save(model.state_dict(), save_best_path)
+        else:
+            bad += 1
+            if bad * cfg.val_period >= cfg.patience:
+                # early stop
+                break
 
     return history

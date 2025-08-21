@@ -163,6 +163,7 @@ def train_bc_policy(
             losses.append(loss.item())
 
         hist["train_loss"].append(float(np.mean(losses)))
+        print(f"Epoch {epoch + 1}/{cfg.epochs}, Train Loss: {hist['train_loss'][-1]:.4f}")
 
         if val_dl is not None and (epoch % cfg.val_period == 0):
             policy.eval()
@@ -185,6 +186,7 @@ def train_bc_policy(
                 bad = 0
                 if save_best_path is not None:
                     torch.save(policy.state_dict(), save_best_path)
+                    print("Saving best model to", save_best_path)
             else:
                 bad += cfg.val_period
                 if bad >= cfg.patience:
