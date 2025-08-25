@@ -8,9 +8,19 @@ def disassembly_success(env):
     z = moved_obj_pos[:, 2]
     return z < 0.02
 
+def assembly_success(env, pos_tolerance: float = 0.003):
+    """Success reward when distance between disk and target base is <= tolerance."""
+    disk_pos = env.scene["moved_obj"].data.root_pos_w
 
-# def assembly_success(env, pos_tolerance: float = 0.05):
-#     return not disassembly_success(env, pos_tolerance) # dist < pos_tolerance
+    base_pos = env.scene["fixed_obj"].data.root_pos_w
+    base_pos_offset = torch.tensor([0.0594, -0.09007075, -0.0214], device=base_pos.device)
+    base_pos = base_pos + base_pos_offset
+
+    # calculate distance
+    distance = torch.norm(disk_pos - base_pos, dim=-1)
+    success = distance <= pos_tolerance
+    return success
+
 
 def out_of_bounds(env, limit: float = 1.5, min_z: float = -0.2):
     """Terminate if robot base or disk leaves a bounding box.

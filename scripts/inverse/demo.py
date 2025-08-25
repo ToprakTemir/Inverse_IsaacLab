@@ -14,7 +14,7 @@ import torch
 from disassembly.NN import MLPPolicy
 
 # Create environment
-env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=3))
+env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
 
 obs_dim = env.observation_space["policy"].shape[1]
 act_dim = env.action_space.shape[1]
@@ -45,7 +45,6 @@ else:
 # Run demo
 obs, info = env.reset()
 while True:
-    print("in loop")
     obs = obs["policy"]  # Get the policy observation
     action = act(obs)
     obs, rew, terminated, time_out, info = env.step(action)

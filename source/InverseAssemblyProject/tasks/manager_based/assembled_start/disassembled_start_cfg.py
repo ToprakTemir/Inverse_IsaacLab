@@ -1,5 +1,4 @@
 import math
-import numpy as np
 
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
@@ -24,9 +23,10 @@ from . import mdp
 # --------------------------------------------------------------------------------------
 # Scene
 # --------------------------------------------------------------------------------------
-import os
-print(f"cwd: {os.getcwd()}")
-ASSETS_FROM_PROJECT_ROOT = "assets"
+
+# class RandomPositions:
+
+
 ARM_KP = 15000.0 # Proportional gain for the arm joints
 ARM_KD = 1200.0 # Derivative gain for the arm joints
 
@@ -43,7 +43,7 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/robot",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"{ASSETS_FROM_PROJECT_ROOT}/robot.usd",
+            usd_path="../assets/robot.usd",
             activate_contact_sensors=True,  # Enable contact sensors for the robot
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
@@ -139,10 +139,18 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         },
     )
 
+    ee_ft_sensor = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/robot/ur5e/RobotIq_Hand_E_base/ee_base_link",
+        update_period=0.0,  # 0.0 means update every step
+        history_length=0,  # No history, only current contact forces
+        debug_vis=False, # Set to True to visualize 3d force arrows
+    )
+
+
     # Fixed base / rod
     fixed_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/base",
-        spawn=sim_utils.UsdFileCfg(usd_path=f"{ASSETS_FROM_PROJECT_ROOT}/task1_fixed.usd"),
+        spawn=sim_utils.UsdFileCfg(usd_path="../assets/task1_fixed.usd"),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=(0.25, 0.55, 0.15),  # Initial position in front of the robot
             rot=(0.7071, 0.7071, 0, 0),  # Rotate 90 degrees around x-axis
@@ -151,11 +159,10 @@ class AssembledStartSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    # Moved disk
     moved_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/disk",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"{ASSETS_FROM_PROJECT_ROOT}/task1_moved.usd",
+            usd_path="../assets/task1_moved.usd",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(max_depenetration_velocity=2.0, max_contact_impulse=1.0)
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
@@ -185,12 +192,7 @@ class ActionsCfg:
     #     joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "Slider_1"],
     #     rescale_to_limits=True
     # )
-    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["Slider_1"],
-    #     rescale_to_limits=True,
-    #     scale=1.0,  # Scale the action to the joint limits
-    # )
+
 
     ee_IK_delta = mdp.DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
@@ -203,12 +205,26 @@ class ActionsCfg:
             ik_method="dls",
         )
     )
+    # ee_joint_angles = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["Slider_1"],
+    #     rescale_to_limits=True,
+    #     scale=1.0,  # Scale the action to the joint limits
+    # )
+
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["Slider_1"],
         open_command_expr={"Slider_1": 0.0},  # Open gripper
         close_command_expr={"Slider_1": 0.025},  # Close gripper
     )
+
+    # gripper_action = mdp.JointPositionToLimitsActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["Slider_1"],
+    #     rescale_to_limits=True,
+    #     scale=1.0,  # Scale the action to the joint limits
+    # )
 
 
 # --------------------------------------------------------------------------------------
@@ -226,8 +242,8 @@ class ObservationsCfg:
         object_pos = ObsTerm(func=mdp.object_pos, params={"asset_cfg": SceneEntityCfg("moved_obj")}) # 3D
         object_quat = ObsTerm(func=mdp.object_quat, params={"asset_cfg": SceneEntityCfg("moved_obj")}) # 4D
         target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")}) # 3D
-        ft_sensor = ObsTerm(func=mdp.ee_ft_sensor) # 6D (force + torque)
-        disk_target_distance = ObsTerm(func=mdp.disk_target_distance, params={"disk_asset_cfg": SceneEntityCfg("moved_obj"), "base_asset_cfg": SceneEntityCfg("fixed_obj")}) # 1D
+        ft_sensor = ObsTerm(func=mdp.ee_ft_sensor, params={"asset_cfg": SceneEntityCfg("robot")}) # 6D (force + torque)
+        # object_target_distance = # TODO: to do or not?
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -280,14 +296,14 @@ class TerminationsCfg:
     """Episode termination conditions."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    success = DoneTerm(func=mdp.disassembly_success, time_out=False)
+    success = DoneTerm(func=mdp.assembly_success, time_out=False)
 
 
 # --------------------------------------------------------------------------------------
 # Top‑level env config
 # --------------------------------------------------------------------------------------
 @configclass
-class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
+class DisassembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
     # externally overridable knobs (accepted by constructor)I'm trying to collect demonstrations of robot holding something and putting it somewhere else in Isaaclab using record_demos.py script preinstalled with isaaclab
     num_envs: int = 1024

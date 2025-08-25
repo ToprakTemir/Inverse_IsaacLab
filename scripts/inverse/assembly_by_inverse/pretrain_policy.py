@@ -114,12 +114,13 @@ class BCConfig:
 
 
 def train_bc_policy(
-    policy: GaussianPolicy,
-    train_ds: BCDemoDataset,
-    val_ds: Optional[BCDemoDataset] = None,
-    cfg: BCConfig = BCConfig(),
-    device: Optional[torch.device] = None,
-    save_best_path: Optional[str] = None,
+        policy: GaussianPolicy,
+        train_ds: BCDemoDataset,
+        val_ds: Optional[BCDemoDataset] = None,
+        cfg: BCConfig = BCConfig(),
+        device: Optional[torch.device] = None,
+        save_best_path: Optional[str] = None,
+        save_latest_path: Optional[str] = None,
 ) -> dict:
     """
     Behavior Cloning trainer. Returns history dict.
@@ -129,12 +130,11 @@ def train_bc_policy(
 
     dl = DataLoader(
         train_ds, batch_size=cfg.batch_size, shuffle=cfg.shuffle,
-        num_workers=cfg.num_workers, drop_last=True, pin_memory=(device.type == "cuda")
+        num_workers=cfg.num_workers, drop_last=True
     )
     val_dl = None
     if val_ds is not None:
-        val_dl = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False,
-                            num_workers=cfg.num_workers, drop_last=False, pin_memory=(device.type == "cuda"))
+        val_dl = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, num_workers=cfg.num_workers, drop_last=False)
 
     opt = optim.Adam(policy.parameters(), lr=cfg.lr)
     mse = nn.MSELoss()
@@ -181,6 +181,11 @@ def train_bc_policy(
                         vlosses.append(float(mse(mu, a).item()))
             v = float(np.mean(vlosses))
             hist["val_loss"].append(v)
+
+            print(f"Epoch {epoch + 1}/{cfg.epochs}, Val Loss: {v:.4f}")
+            torch.save(policy.state_dict(), save_latest_path)
+
+            # best model check
             if v < best_val:
                 best_val = v
                 bad = 0

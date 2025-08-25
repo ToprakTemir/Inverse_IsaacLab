@@ -5,7 +5,7 @@ from isaaclab.app import AppLauncher
 app_launcher = AppLauncher(headless=True)
 app = app_launcher.app
 
-from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg import AssembledStartEnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembled_start.disassembled_start_cfg import DisassembledStartEnvCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
 import os
@@ -139,7 +139,6 @@ class InverseAgent(nn.Module):
 
     def train_phase_evaluator(self, save_best_path: Optional[str] = None) -> None:
         # infer obs_dim from demos
-        # with h5py.File(self.demos[0]["path"], 'r') as f:
 
         sample_obs = self.demos[0]["observations"][0]
         obs_dim_full = sample_obs.shape[-1]
@@ -183,7 +182,7 @@ class InverseAgent(nn.Module):
         hidden = self.hyperparams.get("bc_hidden", (256, 256))
         self.bc_policy = GaussianPolicy(in_dim, act_dim, hidden=hidden).to(self.device)
 
-    def pretrain_bc_policy(self, save_best_path: Optional[str] = None) -> None:
+    def pretrain_bc_policy(self, save_best_path: Optional[str] = None, save_latest_path: Optional[str] = None) -> None:
         sample_obs = self.demos[0]["observations"][0]
         sample_act = self.demos[0]["actions"][0]
         obs_dim_full = sample_obs.shape[-1]
@@ -213,16 +212,16 @@ class InverseAgent(nn.Module):
         cfg = BCConfig(
             lr=self.hyperparams.get("bc_lr", 1e-3),
             batch_size=self.hyperparams.get("bc_batch", 256),
-            epochs=self.hyperparams.get("bc_epochs", 50_000),
+            epochs=self.hyperparams.get("bc_epochs", 5000),
             logprob_loss=self.hyperparams.get("bc_logprob_loss", True),
             val_period=self.hyperparams.get("bc_val_period", 500),
-            patience=self.hyperparams.get("bc_patience", 10_000),
+            patience=self.hyperparams.get("bc_patience", 1000),
             num_workers=self.hyperparams.get("num_workers", 0),
             shuffle=True,
         )
 
         train_bc_policy(
-            self.bc_policy, train_ds, val_ds, cfg, device=self.device, save_best_path=save_best_path
+            self.bc_policy, train_ds, val_ds, cfg, device=self.device, save_best_path=save_best_path, save_latest_path=save_latest_path,
         )
         self.bc_trained = True
 
@@ -298,10 +297,8 @@ class InverseAgent(nn.Module):
         if model_dir is not None:
             os.makedirs(model_dir, exist_ok=True)
 
-        total_timesteps = self.total_steps_for_inverse_skill
-        save_freq = 64_000
+        save_freq = 10_000
         report_freq = 1000
-
         checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_dir)
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
@@ -322,8 +319,8 @@ class InverseAgent(nn.Module):
         assert self.phase_evaluator is not None
         torch.save(self.phase_evaluator.state_dict(), path)
 
-    def load_phase_evaluator(self, path: str, obs_dim_full: int):
-        self.build_phase_evaluator(obs_dim_full)
+    def load_phase_evaluator(self, path: str, obs_dim: int):
+        self.build_phase_evaluator(obs_dim)
         self.phase_evaluator.load_state_dict(torch.load(path, map_location=self.device))
         self.phase_evaluator.to(self.device).eval()
         self.phase_evaluator_trained = True
@@ -332,8 +329,8 @@ class InverseAgent(nn.Module):
         assert self.bc_policy is not None
         torch.save(self.bc_policy.state_dict(), path)
 
-    def load_bc_policy(self, path: str, obs_dim_full: int, act_dim: int):
-        self.build_bc_policy(obs_dim_full, act_dim)
+    def load_bc_policy(self, path: str, obs_dim: int, act_dim: int):
+        self.build_bc_policy(obs_dim, act_dim)
         self.bc_policy.load_state_dict(torch.load(path, map_location=self.device))
         self.bc_policy.to(self.device).eval()
         self.bc_trained = True
@@ -347,13 +344,20 @@ class InverseAgent(nn.Module):
 
 if __name__ == "__main__":
     # 1) Create env (Manager-Based RL)
-    cfg = AssembledStartEnvCfg()
+    cfg = DisassembledStartEnvCfg()
     env = ManagerBasedRLEnv(cfg)
 
     # 2) Load demos
     demo_path = "../datasets/disassembly_15.hdf5"
     demos = load_demos_from_hdf5(demo_path)
     print(f"Loaded {len(demos)} demos from {os.path.abspath(demo_path)}")
+
+    # print the final observations from every demo
+    for i, demo in enumerate(demos):
+        final_obs = demo["observations"][-1]
+        print(f"Demo {i} final object observation: {final_obs[8:15]}")
+        print()
+
     val_demos_path = "../datasets/disassembly_validation_5.hdf5"
     val_demos = load_demos_from_hdf5(val_demos_path)
     print(f"Loaded {len(val_demos)} validation demos from {os.path.abspath(val_demos_path)}")
@@ -409,12 +413,12 @@ if __name__ == "__main__":
 
     # 4) Train the Phase Evaluator (Evaluator)
     # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth")
-    agent.load_phase_evaluator(f"models/2025-08-21-18:55/phase_evaluator_best.pth", obs_dim_full=16)
+    agent.load_phase_evaluator(f"models/2025-08-21-18:55/phase_evaluator_best.pth", obs_dim=16)
 
     # 5) Pretrain BC policy
-    agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth")
-    # agent.load_pretrained_bc_policy(f"models/2025-08-21-18:55/bc_policy_best.pth", obs_dim_full=env.observation_space["policy"].shape[1], act_dim=env.action_space.shape[0])
+    # agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
+    agent.load_bc_policy(f"models/2025-08-21-21:04/bc_policy_latest.pth", obs_dim=16, act_dim=7)
 
     # 6) PPO Finetune with phase-shaped rewards
-    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")
+    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, reward_offset=-0.2, log_dir="ppo_logs")
     agent.save_inverse_model(f"models/{timestamp}/final_inverse_model.zip")
