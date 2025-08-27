@@ -24,14 +24,12 @@ from . import mdp
 # --------------------------------------------------------------------------------------
 # Scene
 # --------------------------------------------------------------------------------------
-import os
-print(f"cwd: {os.getcwd()}")
 ASSETS_FROM_PROJECT_ROOT = "assets"
 ARM_KP = 15000.0 # Proportional gain for the arm joints
 ARM_KD = 1200.0 # Derivative gain for the arm joints
 
 @configclass
-class AssembledStartSceneCfg(InteractiveSceneCfg):
+class AssemblySceneCfg(InteractiveSceneCfg):
     """Scene for Task 1: separate assets."""
 
     ground = AssetBaseCfg(
@@ -298,7 +296,7 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
     rw_proximity: float = 1.0
     rw_control_penalty: float = 0.01
 
-    scene: AssembledStartSceneCfg = AssembledStartSceneCfg(num_envs=1, env_spacing=2.5)
+    scene: AssemblySceneCfg = AssemblySceneCfg(num_envs=1, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()

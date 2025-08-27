@@ -5,7 +5,7 @@ from isaaclab.app import AppLauncher
 app_launcher = AppLauncher(headless=True)
 app = app_launcher.app
 
-from InverseAssemblyProject.tasks.manager_based.assembled_start.disassembled_start_cfg import DisassembledStartEnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembly_task.disassembled_start_cfg import DisassembledStartEnvCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
 import os
@@ -91,6 +91,16 @@ class PhaseRewardWrapper(gym.Wrapper):
         info["reward_phase"] = self.reward_weight * (1.0 - phase)
         return obs, shaped, terminated, truncated, info
 
+# ----------------------- Action Space Wrapper ------------------------ #
+
+class ActionSpaceBoundsWrapper(gym.ActionWrapper):
+    """Bounds the action space to [-1, 1] for each dimension."""
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+        assert isinstance(env.action_space, gym.spaces.Box), "ActionSpaceBoundsWrapper only works with Box action spaces."
+        self.low = env.action_space.low.clip(-1.0, 1.0)
+        self.high = env.action_space.high.clip(-1.0, 1.0)
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=env.action_space.shape, dtype=np.float32)
 
 # ------------------------------ Agent -------------------------------- #
 
@@ -144,7 +154,7 @@ class InverseAgent(nn.Module):
         obs_dim_full = sample_obs.shape[-1]
         self.build_phase_evaluator(obs_dim_full)
 
-        train_ds = PhaseDemoDataset(
+        training_dataset = PhaseDemoDataset(
             self.demos,
             non_robot_indices=self.non_robot_indices_in_obs,
             sample_per_traj=self.hyperparams.get("phase_samples_per_traj", None),
@@ -165,22 +175,21 @@ class InverseAgent(nn.Module):
             epochs=self.hyperparams.get("phase_epochs", 10_000),
             tv_weight=self.hyperparams.get("phase_tv_weight", 0.15),
             val_period=self.hyperparams.get("phase_val_period", 100),
-            patience=self.hyperparams.get("phase_patience", 2_000),
+            patience=self.hyperparams.get("phase_patience", 800),
             num_workers=self.hyperparams.get("num_workers", 0),
             shuffle=True,
         )
 
         train_phase_evaluator(
-            self.phase_evaluator, train_ds, val_ds, cfg, device=self.device, save_best_path=save_best_path
+            self.phase_evaluator, training_dataset, val_ds, cfg, device=self.device, save_best_path=save_best_path
         )
         self.phase_evaluator_trained = True
 
     # --------------------------- BC Policy -------------------------- #
 
-    def build_bc_policy(self, obs_dim_full: int, act_dim: int) -> None:
-        in_dim = obs_dim_full if not self.non_robot_indices_in_obs else len(self.non_robot_indices_in_obs)
+    def build_bc_policy(self, obs_dim: int, act_dim: int) -> None:
         hidden = self.hyperparams.get("bc_hidden", (256, 256))
-        self.bc_policy = GaussianPolicy(in_dim, act_dim, hidden=hidden).to(self.device)
+        self.bc_policy = GaussianPolicy(obs_dim, act_dim, hidden=hidden).to(self.device)
 
     def pretrain_bc_policy(self, save_best_path: Optional[str] = None, save_latest_path: Optional[str] = None) -> None:
         sample_obs = self.demos[0]["observations"][0]
@@ -192,7 +201,6 @@ class InverseAgent(nn.Module):
 
         train_ds = BCDemoDataset(
             self.demos,
-            non_robot_indices=self.non_robot_indices_in_obs,
             action_offset=self.hyperparams.get("bc_action_offset", 1),   # you used 10 previously
             reverse_time=self.hyperparams.get("bc_reverse_time", True),
             device=self.device,
@@ -202,7 +210,6 @@ class InverseAgent(nn.Module):
         if self.validation_demos is not None:
             val_ds = BCDemoDataset(
                 self.validation_demos,
-                non_robot_indices=self.non_robot_indices_in_obs,
                 action_offset=self.hyperparams.get("bc_action_offset", 1),
                 reverse_time=self.hyperparams.get("bc_reverse_time", True),
                 device=self.device,
@@ -214,8 +221,8 @@ class InverseAgent(nn.Module):
             batch_size=self.hyperparams.get("bc_batch", 256),
             epochs=self.hyperparams.get("bc_epochs", 5000),
             logprob_loss=self.hyperparams.get("bc_logprob_loss", True),
-            val_period=self.hyperparams.get("bc_val_period", 500),
-            patience=self.hyperparams.get("bc_patience", 1000),
+            val_period=self.hyperparams.get("bc_val_period", 100),
+            patience=self.hyperparams.get("bc_patience", 500),
             num_workers=self.hyperparams.get("num_workers", 0),
             shuffle=True,
         )
@@ -240,12 +247,13 @@ class InverseAgent(nn.Module):
             device=self.device,
             obs_is_dict_key=self.hyperparams.get("obs_is_dict_key", None),
         )
+        wrapped = ActionSpaceBoundsWrapper(wrapped)
+
         return wrapped
 
     def _init_ppo(self, env: gym.Env) -> PPO:
-        # Use SB3 defaults; feel free to tune
         model = PPO(
-            policy="MlpPolicy",
+            policy="MultiInputPolicy",
             env=env,
             verbose=1,
             device=self.device,
@@ -310,6 +318,7 @@ class InverseAgent(nn.Module):
         )
         callback = [checkpoint_callback, stop_callback, eval_callback]
 
+        print(f"Starting PPO finetuning for {total_timesteps} timesteps")
         model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=callback)
         self.inverse_model = model
 
@@ -348,17 +357,11 @@ if __name__ == "__main__":
     env = ManagerBasedRLEnv(cfg)
 
     # 2) Load demos
-    demo_path = "../datasets/disassembly_15.hdf5"
+    demo_path = "./datasets/disassembly_15.hdf5"
     demos = load_demos_from_hdf5(demo_path)
     print(f"Loaded {len(demos)} demos from {os.path.abspath(demo_path)}")
 
-    # print the final observations from every demo
-    for i, demo in enumerate(demos):
-        final_obs = demo["observations"][-1]
-        print(f"Demo {i} final object observation: {final_obs[8:15]}")
-        print()
-
-    val_demos_path = "../datasets/disassembly_validation_5.hdf5"
+    val_demos_path = "./datasets/disassembly_validation_5.hdf5"
     val_demos = load_demos_from_hdf5(val_demos_path)
     print(f"Loaded {len(val_demos)} validation demos from {os.path.abspath(val_demos_path)}")
 
@@ -374,8 +377,8 @@ if __name__ == "__main__":
         phase_batch=256,
         phase_epochs=10_000,
         phase_tv_weight=0.15,
-        phase_val_period=100,
-        phase_patience=2_000,
+        phase_val_period=50,
+        phase_patience=800,
 
         # bc
         bc_hidden=(256, 256),
@@ -385,6 +388,8 @@ if __name__ == "__main__":
         bc_logprob_loss=True,
         bc_action_offset=10,     # you used 10 before
         bc_reverse_time=True,
+        bc_val_period = 50,
+        bc_patience = 500,
 
         # ppo
         ppo_n_steps=2048,
@@ -413,12 +418,15 @@ if __name__ == "__main__":
 
     # 4) Train the Phase Evaluator (Evaluator)
     # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth")
-    agent.load_phase_evaluator(f"models/2025-08-21-18:55/phase_evaluator_best.pth", obs_dim=16)
+    agent.load_phase_evaluator(f"models/2025-08-27-18:44/phase_evaluator_best.pth", obs_dim=31)
 
     # 5) Pretrain BC policy
-    # agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
-    agent.load_bc_policy(f"models/2025-08-21-21:04/bc_policy_latest.pth", obs_dim=16, act_dim=7)
+    agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
+    # agent.load_bc_policy(f"models/2025-08-27-18:44/bc_policy_best.pth", obs_dim=25, act_dim=7)
+
+    print(f"phase evaluator input dimension: {agent.phase_evaluator.state_dict}")
+    print(f"bc policy input dimension: {agent.bc_policy.state_dict}")
 
     # 6) PPO Finetune with phase-shaped rewards
-    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, reward_offset=-0.2, log_dir="ppo_logs")
+    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")
     agent.save_inverse_model(f"models/{timestamp}/final_inverse_model.zip")

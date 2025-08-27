@@ -47,7 +47,6 @@ class BCDemoDataset(Dataset):
     def __init__(
         self,
         demos: List[dict],
-        non_robot_indices: Optional[Sequence[int]],
         action_offset: int = 1,
         reverse_time: bool = True,
         device: Optional[torch.device] = None,
@@ -55,7 +54,6 @@ class BCDemoDataset(Dataset):
     ):
         self.samples = []
         self.device = device
-        self.non_robot_indices = non_robot_indices
 
         for demo in demos:
             obs = demo["observations"]  # (T, obs_dim)
@@ -77,8 +75,6 @@ class BCDemoDataset(Dataset):
                     target_t = min(T - 1, t + action_offset)
 
                 s = obs[t]
-                if non_robot_indices is not None and len(non_robot_indices) > 0:
-                    s = s[non_robot_indices]
                 a = act[target_t]
                 self.samples.append((s.astype(np.float32), a.astype(np.float32)))
 

@@ -100,7 +100,7 @@ def reset_to_disassembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, dis
     base_quat = torch.tensor([0.7071, 0.7071, 0, 0], device=device).repeat(len(env_ids), 1) # 90 degrees around x-axis
     _write_cords_to_asset(env, env_ids, base_asset_cfg, base_pos, base_quat)
 
-    disk_quat = torch.tensor([0.5, 0.5, 0.5, 0.5], device=device).repeat(len(env_ids), 1) # +90 degrees in y and z coordinates
+    disk_quat = torch.tensor([0.5, 0.5, 0.5, -0.5], device=device).repeat(len(env_ids), 1) # +90 degrees in x and z coordinates
     disk_pos = _get_random_disk_xyz(len(env_ids), device)
     _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_pos, disk_quat)
 

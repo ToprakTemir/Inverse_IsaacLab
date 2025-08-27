@@ -21,7 +21,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point":
-            "InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg:AssembledStartEnvCfg",
+            "InverseAssemblyProject.tasks.manager_based.assembly_task.assembled_start_cfg:AssembledStartEnvCfg",
     },
 )
 

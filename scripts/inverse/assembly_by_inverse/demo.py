@@ -7,14 +7,15 @@ from isaaclab.app import AppLauncher
 app_launcher = AppLauncher(headless=False)
 app = app_launcher.app
 
-from InverseAssemblyProject.tasks.manager_based.assembled_start.assembled_start_cfg import AssembledStartEnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembly_task.assembled_start_cfg import AssembledStartEnvCfg
+from InverseAssemblyProject.tasks.manager_based.assembly_task.disassembled_start_cfg import DisassembledStartEnvCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
 import torch
-from disassembly.NN import MLPPolicy
+from helpers.NN import MLPPolicy
 
-# Create environment
-env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
+# env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
+env = ManagerBasedRLEnv(DisassembledStartEnvCfg(num_envs=50))
 
 obs_dim = env.observation_space["policy"].shape[1]
 act_dim = env.action_space.shape[1]
@@ -49,5 +50,10 @@ while True:
     action = act(obs)
     obs, rew, terminated, time_out, info = env.step(action)
     env.render()
+
+    # print the object position of each env
+    for i in range(env.num_envs):
+        obj_pos = env.scene["moved_obj"].data.root_pos_w[i].cpu().numpy() - env.scene["robot"].data.root_pos_w[i].cpu().numpy()
+        print(f"Env {i}: Object position: {obj_pos}")
 
 app.close()

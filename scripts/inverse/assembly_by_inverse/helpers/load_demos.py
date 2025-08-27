@@ -15,7 +15,7 @@ def load_demos_from_hdf5(hdf5_path: str) -> List[Dict[str, np.ndarray]]:
 
                 actions = np.array(demo_group["actions"])
                 obs_group = demo_group["obs"]
-                obs_group_key_order = ["joint_positions", "object_pos", "object_quat", "target_pos", "ft_sensor"] # IMPORTANT: Ensure this matches your actual observation key order
+                obs_group_key_order = ["joint_positions", "object_pos", "object_quat", "target_pos", "ft_sensor", "disk_target_distance"] # IMPORTANT: Ensure this matches your actual observation key order
 
                 obs_arrays = []
                 for k in obs_group_key_order:

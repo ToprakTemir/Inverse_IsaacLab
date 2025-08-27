@@ -28,7 +28,7 @@ from scripts.inverse.assembly_by_inverse.helpers.load_demos import load_demos_fr
 # ---------------------------- CONFIG ---------------------------- #
 
 # HDF5_PATH = "../../datasets/disassembly_validation_5.hdf5"
-HDF5_PATH = "../../datasets/disassembly_15.hdf5"
+HDF5_PATH = "../../datasets/disassembly_fixed_starts_15.hdf5"
 
 directories = sorted(os.listdir("../models"))
 latest_time = directories[-1]
