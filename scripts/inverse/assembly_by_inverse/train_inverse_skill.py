@@ -2,7 +2,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback, StopTrainingO
 
 from isaaclab.app import AppLauncher
 
-app_launcher = AppLauncher(headless=True)
+app_launcher = AppLauncher(headless=False)
 app = app_launcher.app
 
 from InverseAssemblyProject.tasks.manager_based.assembly_task.disassembled_start_cfg import DisassembledStartEnvCfg
@@ -239,12 +239,10 @@ class InverseAgent(nn.Module):
 
     def _make_wrapped_env(self, reward_weight: float = 1.0):
         assert self.phase_evaluator is not None and self.phase_evaluator_trained
-        # Isaac Lab envs are gymnasium-compatible
+
         env = self.env
 
         wrapped = Sb3VecEnvWrapper(env)
-
-        wrapped = VecMonitor(wrapped, filename="training_data/monitor.csv")  # record episode stats
 
         wrapped = PhaseRewardVecWrapper(
             wrapped,
@@ -255,6 +253,8 @@ class InverseAgent(nn.Module):
             obs_is_dict_key=self.hyperparams.get("obs_is_dict_key", None),
         )
 
+        wrapped = VecMonitor(wrapped, filename="training_data/monitor.csv")  # record episode stats
+
         return wrapped
 
     def _init_ppo(self, env: gym.Env) -> PPO:
@@ -263,7 +263,7 @@ class InverseAgent(nn.Module):
             env=env,
             verbose=1,
             device=self.device,
-            n_steps=self.hyperparams.get("ppo_n_steps", 2048),
+            n_steps=self.hyperparams.get("ppo_n_steps", 256),
             batch_size=self.hyperparams.get("ppo_batch_size", 256),
             learning_rate=self.hyperparams.get("ppo_lr", 3e-4),
             ent_coef=self.hyperparams.get("ppo_ent_coef", 0.0),
@@ -308,10 +308,11 @@ class InverseAgent(nn.Module):
         if model_dir is not None:
             os.makedirs(model_dir, exist_ok=True)
 
-        save_freq = 10_000
-        report_freq = 1000
+        save_freq = 10
+        report_freq = 10
+        patience = 200
         checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_dir)
-        stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
+        stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=patience, verbose=1)
         eval_callback = EvalCallback(
             venv,
             best_model_save_path=model_dir,
@@ -322,7 +323,7 @@ class InverseAgent(nn.Module):
         callback = [checkpoint_callback, eval_callback]
 
         print(f"Starting PPO finetuning for {total_timesteps} timesteps")
-        model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=callback)
+        model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=callback,)
         self.inverse_model = model
 
     # ----------------------------- IO ------------------------------- #
@@ -333,7 +334,7 @@ class InverseAgent(nn.Module):
 
     def load_phase_evaluator(self, path: str, obs_dim: int):
         self.build_phase_evaluator(obs_dim)
-        self.phase_evaluator.load_state_dict(torch.load(path, map_location=self.device))
+        self.phase_evaluator.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
         self.phase_evaluator.to(self.device).eval()
         self.phase_evaluator_trained = True
 
@@ -343,7 +344,7 @@ class InverseAgent(nn.Module):
 
     def load_bc_policy(self, path: str, obs_dim: int, act_dim: int):
         self.build_bc_policy(obs_dim, act_dim)
-        self.bc_policy.load_state_dict(torch.load(path, map_location=self.device))
+        self.bc_policy.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
         self.bc_policy.to(self.device).eval()
         self.bc_trained = True
 
@@ -356,7 +357,7 @@ class InverseAgent(nn.Module):
 if __name__ == "__main__":
     # 1) Create env (Manager-Based RL)
     cfg = DisassembledStartEnvCfg()
-    env = ManagerBasedRLEnv(cfg, rl_device="cpu")
+    env = ManagerBasedRLEnv(cfg)
 
     # 2) Load demos
     demo_path = "./datasets/disassembly_15.hdf5"
@@ -394,7 +395,7 @@ if __name__ == "__main__":
         bc_patience = 500,
 
         # ppo
-        ppo_n_steps=2048,
+        ppo_n_steps=256,
         ppo_batch_size=256,
         ppo_lr=3e-4,
         ppo_ent_coef=0.0,
@@ -420,12 +421,12 @@ if __name__ == "__main__":
 
     # 4) Train the Phase Evaluator (Evaluator)
     # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth")
-    agent.load_phase_evaluator(f"models/2025-08-27-20:16/phase_evaluator_best.pth", obs_dim=31)
+    agent.load_phase_evaluator(f"models/2025-08-27-20:16/phase_evaluator_best.pth", obs_dim=9999999)
 
     # 5) Pretrain BC policy
     # agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
     agent.load_bc_policy(f"models/2025-08-27-20:07/bc_policy_best.pth", obs_dim=25, act_dim=7)
 
     # 6) PPO Finetune with phase-shaped rewards
-    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")
+    agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, model_dir=f"models/{timestamp}", log_dir=f"models/{timestamp}/logs")
     agent.save_inverse_model(f"models/{timestamp}/final_inverse_model.zip")
