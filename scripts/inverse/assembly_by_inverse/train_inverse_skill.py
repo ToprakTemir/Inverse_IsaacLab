@@ -21,7 +21,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import VecEnvWrapper, VecMonitor
+from isaaclab_rl.sb3 import Sb3VecEnvWrapper
 
 from PhaseEvaluator import (
     PhaseEvaluator,
@@ -40,67 +41,69 @@ from helpers.load_demos import load_demos_from_hdf5
 
 # -------------------- Reward Wrapper using Phase --------------------- #
 
-class PhaseRewardWrapper(gym.Wrapper):
+
+class PhaseRewardVecWrapper(VecEnvWrapper):
     """
-    Adds a shaping reward based on predicted phase from PhaseEvaluator:
-      r_new = r_base + reward_weight * (1 - phase_t)
-    where phase_t ∈ [0,1], ideally 0 near the *initial* state.
-    You can flip sign or change shaping as needed.
+    VecEnv wrapper that adds shaping: r_new = r_base + w * (1 - phase_t)
+    where phase_t in [0,1] predicted by a PhaseEvaluator network.
+
+    Handles dict observations via `obs_is_dict_key`.
+    `non_robot_indices` selects a subvector from the observation before feeding the phase net.
     """
     def __init__(
         self,
-        env: gym.Env,
+        venv,
         phase_eval: PhaseEvaluator,
-        non_robot_indices: Optional[Sequence[int]],
+        non_robot_indices: Optional[Sequence[int]] = None,
         reward_weight: float = 1.0,
         device: Optional[torch.device] = None,
         obs_is_dict_key: Optional[str] = None,
     ):
-        super().__init__(env)
+        super().__init__(venv)
         self.phase_eval = phase_eval.eval()
         self.non_robot_indices = list(non_robot_indices) if non_robot_indices else []
         self.reward_weight = reward_weight
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.obs_is_dict_key = obs_is_dict_key  # if env.obs is a dict, pick a key to run evaluator on
+        self.obs_is_dict_key = obs_is_dict_key
         self.phase_eval.to(self.device)
 
-    def _extract_obs_for_phase(self, obs) -> np.ndarray:
-        """
-        Supports raw ndarray or dict observations. Extend if your env returns tuples, etc.
-        """
+    # --- utils ---
+    def _extract_batch(self, obs) -> np.ndarray:
+        # obs can be np.ndarray, or dict[str, np.ndarray] with shape (n_envs, *dims)
         if isinstance(obs, dict):
             key = self.obs_is_dict_key or next(iter(obs.keys()))
             x = obs[key]
         else:
             x = obs
-
         if self.non_robot_indices:
             x = x[..., self.non_robot_indices]
         return x
 
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(action)
-
-        x = self._extract_obs_for_phase(obs)
-        xt = torch.as_tensor(x, dtype=torch.float32, device=self.device).unsqueeze(0)
+    def _predict_phase(self, x_np: np.ndarray) -> np.ndarray:
+        # x_np shape: (n_envs, obs_dim_selected)
+        xt = torch.as_tensor(x_np, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            phase = self.phase_eval(xt).squeeze().item()  # [0,1]
+            phase = self.phase_eval(xt).squeeze(-1)  # shape (n_envs,)
+        return phase.clamp(0.0, 1.0).detach().cpu().numpy()
 
-        shaped = reward + self.reward_weight * (1.0 - phase)
-        info["phase"] = phase
-        info["reward_phase"] = self.reward_weight * (1.0 - phase)
-        return obs, shaped, terminated, truncated, info
+    # --- VecEnv interface overrides ---
+    def step_wait(self):
+        obs, rewards, dones, infos = self.venv.step_wait()
+        x = self._extract_batch(obs)
+        phases = self._predict_phase(x)  # (n_envs,)
+        shaped_bonus = self.reward_weight * (1.0 - phases)
+        rewards = rewards + shaped_bonus
 
-# ----------------------- Action Space Wrapper ------------------------ #
+        # annotate infos per env
+        for i in range(len(infos)):
+            if infos[i] is None:
+                infos[i] = {}
+            infos[i]["phase"] = float(phases[i])
+            infos[i]["reward_phase"] = float(shaped_bonus[i])
+        return obs, rewards, dones, infos
 
-class ActionSpaceBoundsWrapper(gym.ActionWrapper):
-    """Bounds the action space to [-1, 1] for each dimension."""
-    def __init__(self, env: gym.Env):
-        super().__init__(env)
-        assert isinstance(env.action_space, gym.spaces.Box), "ActionSpaceBoundsWrapper only works with Box action spaces."
-        self.low = env.action_space.low.clip(-1.0, 1.0)
-        self.high = env.action_space.high.clip(-1.0, 1.0)
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=env.action_space.shape, dtype=np.float32)
+    def reset(self):
+        return self.venv.reset()
 
 # ------------------------------ Agent -------------------------------- #
 
@@ -234,26 +237,29 @@ class InverseAgent(nn.Module):
 
     # ------------------------ PPO Finetuning ------------------------ #
 
-    def _make_wrapped_env(self, reward_weight: float = 1.0) -> gym.Env:
+    def _make_wrapped_env(self, reward_weight: float = 1.0):
         assert self.phase_evaluator is not None and self.phase_evaluator_trained
         # Isaac Lab envs are gymnasium-compatible
-        env: gym.Env = self.env
+        env = self.env
 
-        wrapped = PhaseRewardWrapper(
-            env,
+        wrapped = Sb3VecEnvWrapper(env)
+
+        wrapped = VecMonitor(wrapped, filename="training_data/monitor.csv")  # record episode stats
+
+        wrapped = PhaseRewardVecWrapper(
+            wrapped,
             self.phase_evaluator,
             non_robot_indices=self.non_robot_indices_in_obs,
             reward_weight=reward_weight,
             device=self.device,
             obs_is_dict_key=self.hyperparams.get("obs_is_dict_key", None),
         )
-        wrapped = ActionSpaceBoundsWrapper(wrapped)
 
         return wrapped
 
     def _init_ppo(self, env: gym.Env) -> PPO:
         model = PPO(
-            policy="MultiInputPolicy",
+            policy="MlpPolicy",
             env=env,
             verbose=1,
             device=self.device,
@@ -293,10 +299,7 @@ class InverseAgent(nn.Module):
         return model
 
     def finetune_with_ppo(self, total_timesteps: int, reward_weight: float = 1.0, model_dir: str = None, log_dir: Optional[str] = None):
-        env_wrapped = self._make_wrapped_env(reward_weight=reward_weight)
-
-        # vectorize as DummyVec for SB3
-        venv = DummyVecEnv([lambda: env_wrapped])
+        venv = self._make_wrapped_env(reward_weight=reward_weight)
 
         model = self._init_ppo(venv)
 
@@ -310,13 +313,13 @@ class InverseAgent(nn.Module):
         checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_dir)
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
-            env,
+            venv,
             best_model_save_path=model_dir,
             log_path=log_dir,
             eval_freq=report_freq,
             callback_after_eval=stop_callback
         )
-        callback = [checkpoint_callback, stop_callback, eval_callback]
+        callback = [checkpoint_callback, eval_callback]
 
         print(f"Starting PPO finetuning for {total_timesteps} timesteps")
         model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=callback)
@@ -350,11 +353,10 @@ class InverseAgent(nn.Module):
 
 
 # ----------------------------- Script ------------------------------- #
-
 if __name__ == "__main__":
     # 1) Create env (Manager-Based RL)
     cfg = DisassembledStartEnvCfg()
-    env = ManagerBasedRLEnv(cfg)
+    env = ManagerBasedRLEnv(cfg, rl_device="cpu")
 
     # 2) Load demos
     demo_path = "./datasets/disassembly_15.hdf5"
@@ -418,14 +420,11 @@ if __name__ == "__main__":
 
     # 4) Train the Phase Evaluator (Evaluator)
     # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth")
-    agent.load_phase_evaluator(f"models/2025-08-27-18:44/phase_evaluator_best.pth", obs_dim=31)
+    agent.load_phase_evaluator(f"models/2025-08-27-20:16/phase_evaluator_best.pth", obs_dim=31)
 
     # 5) Pretrain BC policy
-    agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
-    # agent.load_bc_policy(f"models/2025-08-27-18:44/bc_policy_best.pth", obs_dim=25, act_dim=7)
-
-    print(f"phase evaluator input dimension: {agent.phase_evaluator.state_dict}")
-    print(f"bc policy input dimension: {agent.bc_policy.state_dict}")
+    # agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
+    agent.load_bc_policy(f"models/2025-08-27-20:07/bc_policy_best.pth", obs_dim=25, act_dim=7)
 
     # 6) PPO Finetune with phase-shaped rewards
     agent.finetune_with_ppo(total_timesteps=10_000_000, reward_weight=1.0, log_dir="ppo_logs")

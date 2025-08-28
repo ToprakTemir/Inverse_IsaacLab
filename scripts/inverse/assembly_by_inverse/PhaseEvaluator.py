@@ -135,8 +135,8 @@ def train_phase_evaluator(
 
     optim_ = optim.Adam(model.parameters(), lr=cfg.lr)
     mse = nn.MSELoss()
-    history = {"train_loss": [], "val_loss": []}
 
+    history = {"train_loss": [], "val_loss": []}
     best_val = math.inf
     bad = 0
 
@@ -175,10 +175,6 @@ def train_phase_evaluator(
         if val_loader is None or (epoch % cfg.val_period != 0):
             continue
 
-        if save_best_path is not None:
-            print(f"Saving best model to {save_best_path}")
-
-
         model.eval()
         vals = []
         with torch.no_grad():
@@ -189,9 +185,12 @@ def train_phase_evaluator(
                 vals.append(mse(pred, yb.squeeze(-1)).item())
         v = float(np.mean(vals)) if len(vals) else epoch_loss
         history["val_loss"].append(v)
+        print(f"--- Validation Loss (only MSE without TV): {v:.4f}")
+
 
         improved = v < best_val
         if improved:
+            print(f"New best validation loss! {best_val:.4f} -> {v:.4f}")
             best_val = v
             bad = 0
             if save_best_path is not None:
