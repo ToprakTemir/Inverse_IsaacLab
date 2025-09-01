@@ -105,6 +105,7 @@ def train_phase_evaluator(
     cfg: PhaseTrainConfig = PhaseTrainConfig(),
     device: Optional[torch.device] = None,
     save_best_path: Optional[str] = None,
+    save_latest_path: Optional[str] = None,
 ) -> dict:
     """
     Trains the PhaseEvaluator to predict normalized phase.
@@ -186,7 +187,7 @@ def train_phase_evaluator(
         v = float(np.mean(vals)) if len(vals) else epoch_loss
         history["val_loss"].append(v)
         print(f"--- Validation Loss (only MSE without TV): {v:.4f}")
-
+        torch.save(model.state_dict(), save_latest_path) if save_latest_path is not None else None
 
         improved = v < best_val
         if improved:

@@ -27,14 +27,14 @@ from scripts.inverse.assembly_by_inverse.helpers.load_demos import load_demos_fr
 
 # ---------------------------- CONFIG ---------------------------- #
 
-HDF5_PATH = "../../datasets/disassembly_validation_5.hdf5"
-# HDF5_PATH = "../../datasets/disassembly_15.hdf5"
+# HDF5_PATH = "../../datasets/disassembly_validation_5.hdf5"
+HDF5_PATH = "../../datasets/disassembly_15.hdf5"
 
 directories = sorted(os.listdir("../../models"))
 latest_time = directories[-1]
 
-time = "2025-08-27-20:16"
-# time = latest_time
+# time = "2025-08-27-20:16"
+time = latest_time
 
 PHASE_EVAL_WEIGHTS = f"../../models/{time}/phase_evaluator_best.pth"
 NON_ROBOT_INDICES = slice(8, None) # or list of indices, e.g. [8, 9, 10, ...]
