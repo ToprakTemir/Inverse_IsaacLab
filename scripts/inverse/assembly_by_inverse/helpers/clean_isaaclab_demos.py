@@ -12,8 +12,8 @@ import h5py
 import numpy as np
 
 # ========= CONFIG (EDIT THESE) =========
-INPUT_PATH  = "../../datasets/disassembly_validation_5_non_cleaned.hdf5"
-OUTPUT_PATH = "../../datasets/disassembly_validation_5.hdf5"
+INPUT_PATH  = "../../datasets/dataset.hdf5"
+OUTPUT_PATH = "../../datasets/only_pullout_validation_5.hdf5"
 
 # Prefer processed_actions if present; fall back to actions
 ACTIONS_PRIMARY   = "processed_actions"

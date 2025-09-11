@@ -43,6 +43,24 @@ class EventCfg:
         },
     )
 
+    set_robot_to_reach_pose = EventTerm(
+        func=mdp.set_robot_to_insertion_pose,
+        mode="reset",
+        params={
+            "base_asset_cfg": SceneEntityCfg("fixed_obj"),
+            "disk_asset_cfg": SceneEntityCfg("moved_obj"),
+        },
+    )
+
+    set_robot_holding_disk = EventTerm(
+        func=mdp.set_robot_holding_disk,
+        mode="reset",
+        params={
+                "robot_asset_cfg": SceneEntityCfg("robot"),
+                "disk_asset_cfg": SceneEntityCfg("moved_obj"),
+            },
+    )
+
 
 # --------------------------------------------------------------------------------------
 # Rewards
@@ -96,7 +114,7 @@ class DisassembledStartEnvCfg(ManagerBasedRLEnvCfg):
     # rewards.control_penalty.weight = float(rw_control_penalty)
 
     sim = sim_utils.SimulationCfg()
-    sim.dt = 1.0 / 360
+    sim.dt = 1.0 / 720
     sim.physx.max_position_iteration_count = 200
     sim.physx.max_velocity_iteration_count = 20
     episode_length_s = 24.0
@@ -113,7 +131,7 @@ class DisassembledStartEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.num_envs = int(self.num_envs)
         self.scene.env_spacing = float(self.env_spacing)
 
-        self.decimation = 3 # the period of the policy being queried, in simulation steps
+        self.decimation = 6 # the period of the policy being queried, in simulation steps
         self.sim.render_interval = self.decimation
 
         self.viewer.eye = (0.5, 0.25, 0.2)

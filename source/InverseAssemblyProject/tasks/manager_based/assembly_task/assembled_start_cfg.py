@@ -25,8 +25,8 @@ from . import mdp
 # Scene
 # --------------------------------------------------------------------------------------
 ASSETS_FROM_PROJECT_ROOT = "assets"
-ARM_KP = 15000.0 # Proportional gain for the arm joints
-ARM_KD = 1200.0 # Derivative gain for the arm joints
+ARM_KP = 150000.0 # Proportional gain for the arm joints
+ARM_KD = 12000.0 # Derivative gain for the arm joints
 
 @configclass
 class AssemblySceneCfg(InteractiveSceneCfg):
@@ -128,7 +128,7 @@ class AssemblySceneCfg(InteractiveSceneCfg):
             "Slider_1_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_1"],
                 effort_limit_sim
-                =100000000.0,
+                =30.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -265,7 +265,15 @@ class EventCfg:
         params={
             "base_asset_cfg": SceneEntityCfg("fixed_obj"),
             "disk_asset_cfg": SceneEntityCfg("moved_obj"),
-            "set_robot_to_reach_pose": True,
+        },
+    )
+
+    set_robot_to_reach_pose = EventTerm(
+        func=mdp.set_robot_to_insertion_pose,
+        mode="reset",
+        params={
+            "base_asset_cfg": SceneEntityCfg("fixed_obj"),
+            "disk_asset_cfg": SceneEntityCfg("moved_obj"),
         },
     )
 
@@ -329,7 +337,7 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
     # rewards.control_penalty.weight = float(rw_control_penalty)
 
     sim = sim_utils.SimulationCfg()
-    sim.dt = 1.0 / 360
+    sim.dt = 1.0 / 720
     sim.physx.max_position_iteration_count = 200
     sim.physx.max_velocity_iteration_count = 20
     episode_length_s = 24.0
@@ -346,7 +354,7 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.num_envs = int(self.num_envs)
         self.scene.env_spacing = float(self.env_spacing)
 
-        self.decimation = 3 # the period of the policy being queried, in simulation steps
+        self.decimation = 6 # the period of the policy being queried, in simulation steps
         self.sim.render_interval = self.decimation
 
         self.viewer.eye = (0.5, 0.25, 0.2)

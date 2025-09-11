@@ -17,9 +17,9 @@ from helpers.NN import MLPPolicy
 from isaaclab_rl.sb3 import Sb3VecEnvWrapper
 from stable_baselines3 import PPO
 
-env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
-
-# env = ManagerBasedRLEnv(DisassembledStartEnvCfg(num_envs=50))
+# env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
+env = ManagerBasedRLEnv(DisassembledStartEnvCfg(num_envs=50))
+action_like = env.action_manager.action
 env = Sb3VecEnvWrapper(env)
 
 obs_dim = env.observation_space.shape[-1]
@@ -40,20 +40,21 @@ if policy_path:
 else:
     print("No policy provided — running with random actions")
     def act(obs):
-        return torch.rand_like(env.action_manager.action) * 2 - 1 # random actions in [-1, 1]
-        # joints = torch.zeros_like(env.action_manager.action[:, :-1])  # zero actions
+        # return torch.rand_like(action_like) * 2 - 1 # random actions in [-1, 1]
+        joints = torch.zeros_like(action_like[:, :-1])  # zero actions
         # gripper = torch.rand_like(env.action_manager.action[:, -1:]) * 2 - 1  # random gripper action in [-1, 1]
-        # return torch.cat([joints, gripper], dim=-1)  # random gripper action
+        gripper = torch.zeros_like(action_like[:, :1])
+        return torch.cat([joints, gripper], dim=-1)
 
 
 # Run demo
 # obs, info = env.reset()
 obs = env.reset()
+print("Environment reset completed")
 while True:
     # obs = obs["policy"]  # Get the policy observation
     action = act(obs)
     # obs, rew, terminated, time_out, info = env.step(action)
     obs, rew, terminated, time_out = env.step(action)
-    env.render()
 
 app.close()

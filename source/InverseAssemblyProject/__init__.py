@@ -25,3 +25,13 @@ gym.register(
     },
 )
 
+gym.register(
+    id="Assembly-UR3e-IK-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point":
+            "InverseAssemblyProject.tasks.manager_based.assembly_task.disassembled_start_cfg:DisassembledStartEnvCfg",
+    },
+)
+

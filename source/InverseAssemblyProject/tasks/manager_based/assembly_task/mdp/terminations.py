@@ -1,6 +1,6 @@
 import torch
 
-from .reset_events import DISK_OFFSET_FROM_BASE, DISK_SPAWN_QUAT
+from .reset_events import DISK_OFFSET_FROM_BASE, DISK_ASSEMBLED_QUAT
 
 def disassembly_and_place_ground_success(env):
     """Count it success when the disk hits the ground"""

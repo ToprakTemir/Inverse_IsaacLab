@@ -11,9 +11,11 @@ from isaaclab.utils.math import (
 
 
 from . import observations
+from isaaclab.envs.mdp import randomize_physics_scene_gravity
+
 
 DISK_OFFSET_FROM_BASE = torch.tensor([0.0594, -0.09007075, -0.0214])
-DISK_SPAWN_QUAT = torch.tensor([0.7071, 0, 0, 0.7071]) # 90 degrees around x-axis
+DISK_ASSEMBLED_QUAT = torch.tensor([0.7071, 0, 0, 0.7071]) # 90 degrees around x-axis
 
 def reset_robot_joints(env, env_ids, asset_cfg: SceneEntityCfg):
     robot = env.scene[asset_cfg.name]
@@ -56,7 +58,7 @@ def _get_random_disk_xyz(num_envs, device):
     z = torch.zeros((num_envs, 1), device=device) + 0.001
     return torch.cat([x, y, z], dim=-1)
 
-def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg, set_robot_to_reach_pose: bool = False):
+def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
     """Reset such that the disk is already inserted to the base."""
 
     base = env.scene[base_asset_cfg.name]
@@ -70,21 +72,26 @@ def reset_to_assembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_a
     env.sim.step(render=False)  # step sim to avoid collisions
 
     disk_pos = base_pos + DISK_OFFSET_FROM_BASE.to(device)
-    disk_quat = DISK_SPAWN_QUAT.to(device)
+    disk_quat = DISK_ASSEMBLED_QUAT.to(device)
     _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_pos, disk_quat)
 
-    if set_robot_to_reach_pose:
-        # set the robot joints to reach for the disk
+def set_robot_to_insertion_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
+    base = env.scene[base_asset_cfg.name]
+    device = base.data.root_pos_w.device
+    disk = env.scene[disk_asset_cfg.name]
+    assembled_disk_pos_w = base.data.root_pos_w + DISK_OFFSET_FROM_BASE.to(device)
+    assembled_disk_pos = assembled_disk_pos_w - env.scene.env_origins[env_ids]
 
-        epsilon = 0.01
-        gripper_tip_offset_from_disk = torch.tensor([0, -0.05, 0], device=device).repeat(len(env_ids), 1) # TODO: tune
-        gripper_target_pos = disk_pos + gripper_tip_offset_from_disk
-        gripper_target_quat = torch.tensor([0, 0, 0, 0], device=device).repeat(len(env_ids), 1) # same as the spawn orientation
+    std = 0.008  # IMPORTANT: can be tuned
+    gripper_tip_offset_from_disk = torch.tensor([0, -0.06, 0], device=device).repeat(len(env_ids), 1)  # IMPORTANT: can be tuned
+    gripper_target_pos = assembled_disk_pos + gripper_tip_offset_from_disk
+    gripper_target_quat = torch.tensor([0, 0, 0, 0], device=device).repeat(len(env_ids),
+                                                                           1)  # same as the spawn orientation
 
-        normal_dist = torch.distributions.Normal(loc=gripper_target_pos, scale=epsilon) # add some noise
-        gripper_target_pos = normal_dist.sample()
+    normal_dist = torch.distributions.Normal(loc=gripper_target_pos, scale=std)  # add some noise
+    gripper_target_pos = normal_dist.sample()
 
-        set_ee_pose_ik(env, env_ids, gripper_target_pos, gripper_target_quat)
+    set_ee_pose_ik(env, env_ids, gripper_target_pos, gripper_target_quat)
 
 
 def reset_to_disassembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
@@ -100,34 +107,104 @@ def reset_to_disassembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, dis
     disk_pos = _get_random_disk_xyz(len(env_ids), device)
     _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_pos, disk_quat)
 
-def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat):
-    """Set robot joint position using DLS IK."""
+def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat, tol=1e-3):
+    """Set robot joint positions using DLS IK; stop when the worst env's error ≤ tol."""
     terms_backup = env.recorder_manager._terms
     names_backup = env.recorder_manager._term_names
     env.recorder_manager._terms = {}
     env.recorder_manager._term_names = []
 
+    device = fingertip_target_pos.device
+    n = len(env_ids)
+
     ik_time = 0.0
-    err = torch.ones((len(env_ids), 6), device=fingertip_target_pos.device) * 10.0  # initialize with large error
-    while torch.norm(err) > 1e-3:
+    err = torch.full((n, 6), 10.0, device=device)  # initialize with large error
+    kp, kd, ki = 1.0, 0.0, 0.0
+    i_err = torch.zeros_like(err)
+    prev_err = err.clone()
+
+    # helper to get "worst" error across envs
+    def worst_err(e):
+        # per-env 2-norm of 6D error
+        per_env = torch.linalg.vector_norm(e, dim=1)
+        mval, midx = per_env.max(dim=0)
+        return mval, midx, per_env
+
+    max_err, worst_idx, per_env_err = worst_err(err)
+
+    while max_err > tol:
         # get current ee pose
         ee_pose = observations.ee_tip_pose(env)
         ee_pos = ee_pose[env_ids, :3]  # (num_envs, 3)
         ee_quat = ee_pose[env_ids, 3:]  # (num_envs, 4)
 
         # compute error
-        pos_err = fingertip_target_pos - ee_pos
-        quat_err = quat_box_minus(fingertip_target_quat, ee_quat) # quat difference operator function
-        err = torch.cat([pos_err, quat_err], dim=-1)  # (num_envs, 6)
+        pos_err  = fingertip_target_pos - ee_pos
+        quat_err = quat_box_minus(fingertip_target_quat, ee_quat)  # -> (n, 3) or (n, 3-like)
+        err = torch.cat([pos_err, quat_err], dim=-1)  # (n, 6)
 
-        # set the differential IK controller to move towards the target
+        # PID on the active envs only
+        dt = env.step_dt
+        d_err = (err - prev_err) / dt
+        prev_err = err
+
+        i_err = (i_err + err * dt).clamp_(-0.05, 0.05)
+
+        command = kp * err + kd * d_err + ki * i_err
+
+        # send command
         action = torch.zeros_like(env.action_manager.action)
-        action[env_ids, :6] = err[env_ids]
+        action[env_ids, :6] = command
         env.step(action)
-        ik_time += env.sim.cfg.dt
-        if ik_time > 5.0:  # timeout after 10 seconds
-            print("IK timeout")
+
+        ik_time += dt
+        if ik_time > 8.0:  # timeout after 8 seconds
+            print(f"IK timeout: worst_err={max_err.item():.3e} at env_idx={worst_idx.item()}")
             break
+
+        # recompute worst error for loop condition
+        max_err, worst_idx, _ = worst_err(err)
 
     env.recorder_manager._terms = terms_backup
     env.recorder_manager._term_names = names_backup
+
+
+def set_robot_holding_disk(env, env_ids, robot_asset_cfg: SceneEntityCfg, disk_asset_cfg: SceneEntityCfg):
+    """Set the robot to be holding the disk in its gripper."""
+    robot = env.scene[robot_asset_cfg.name]
+    disk = env.scene[disk_asset_cfg.name]
+    device = robot.data.root_pos_w.device
+
+    # get robot's end-effector pose
+    ee_pose = observations.ee_tip_pose(env)
+    disk_teleport_pos = ee_pose[:, :3]
+    disk_teleport_pos_offset = torch.tensor([0, 0.008, 0], device=device).repeat(len(env_ids), 1)  # IMPORTANT: can be tuned
+    disk_teleport_pos = disk_teleport_pos + disk_teleport_pos_offset
+    disk_teleport_quat = DISK_ASSEMBLED_QUAT.to(device=device).repeat(len(env_ids), 1)
+
+    # disable gravity
+    randomize_physics_scene_gravity(env, env_ids, ([0, 0, 0], [0, 0, 0]), operation="abs")
+    dt = env.step_dt
+
+    # open the gripper
+    open_action = torch.zeros_like(env.action_manager.action)
+    open_action[:, -1] = -1.0  # open gripper
+    t = 0
+    while t < 0.5:
+        env.step(open_action)
+        t += dt
+
+    # teleport the disk to the gripper
+    _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_teleport_pos, disk_teleport_quat)
+
+    # close the gripper
+    close_action = torch.zeros_like(env.action_manager.action)
+    close_action[:, -1] = 1.0  # close gripper
+
+    t = 0
+    while t < 0.5:
+        env.step(close_action)
+        t += dt
+
+    # re-enable gravity
+    randomize_physics_scene_gravity(env, env_ids, ([0, 0, -9.81], [0, 0, -9.81]), operation="abs")
