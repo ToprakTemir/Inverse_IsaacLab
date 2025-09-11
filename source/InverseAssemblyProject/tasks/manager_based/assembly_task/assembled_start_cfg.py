@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import ContactSensorCfg, FrameTransformerCfg, OffsetCfg
 from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 
@@ -137,6 +137,17 @@ class AssemblySceneCfg(InteractiveSceneCfg):
         },
     )
 
+    ee_center = FrameTransformerCfg(
+        prim_path="{ENV_REGEX_NS}/robot/ur5e/base_link",
+        target_frames=[
+            FrameTransformerCfg.FrameCfg(
+                prim_path="{ENV_REGEX_NS}/robot/ur5e/RobotIq_Hand_E_base/ee_base_link",
+                name="ee_center",
+                offset=OffsetCfg(pos=(0.0, 0.05, 0.0), rot=(1.0, 0.0, 0.0, 0))
+            )
+        ],
+    )
+
     # Fixed base / rod
     fixed_obj: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/base",
@@ -226,6 +237,7 @@ class ObservationsCfg:
         target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")}) # 3D
         ft_sensor = ObsTerm(func=mdp.ee_ft_sensor) # 6D (force + torque)
         disk_target_distance = ObsTerm(func=mdp.disk_target_distance, params={"disk_asset_cfg": SceneEntityCfg("moved_obj"), "base_asset_cfg": SceneEntityCfg("fixed_obj")}) # 1D
+        ee_tip_pose = ObsTerm(func=mdp.ee_tip_pose, params={"ee_tip_config": SceneEntityCfg("ee_center")}) # 7D (pos + quat)
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -253,8 +265,15 @@ class EventCfg:
         params={
             "base_asset_cfg": SceneEntityCfg("fixed_obj"),
             "disk_asset_cfg": SceneEntityCfg("moved_obj"),
+            "set_robot_to_reach_pose": True,
         },
     )
+
+    # reach_hold_pose = EventTerm(
+    #     func=mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={}
+    # )
 
 
 # --------------------------------------------------------------------------------------
@@ -278,7 +297,8 @@ class TerminationsCfg:
     """Episode termination conditions."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    success = DoneTerm(func=mdp.disassembly_success, time_out=False)
+    # success = DoneTerm(func=mdp.disassembly_and_place_ground_success, time_out=False)
+    success = DoneTerm(func=mdp.disassembly_pullout_success, time_out=False)
 
 
 # --------------------------------------------------------------------------------------

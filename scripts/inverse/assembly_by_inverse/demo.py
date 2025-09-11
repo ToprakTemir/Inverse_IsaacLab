@@ -17,16 +17,17 @@ from helpers.NN import MLPPolicy
 from isaaclab_rl.sb3 import Sb3VecEnvWrapper
 from stable_baselines3 import PPO
 
-# env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
-env = ManagerBasedRLEnv(DisassembledStartEnvCfg(num_envs=50))
+env = ManagerBasedRLEnv(AssembledStartEnvCfg(num_envs=50))
+
+# env = ManagerBasedRLEnv(DisassembledStartEnvCfg(num_envs=50))
 env = Sb3VecEnvWrapper(env)
 
 obs_dim = env.observation_space.shape[-1]
 act_dim = env.action_space.shape[-1]
 print(f"obs_dim: {obs_dim}, act_dim: {act_dim}")
 
-policy_path = "/home/toprak/InverseAssemblyProject/scripts/inverse/models/2025-09-01-02:57/rl_model_184320_steps.zip"
-# policy_path = None
+# policy_path = "/scripts/inverse/pick_and_assemble_models/2025-09-01-02:57/rl_model_10240_steps.zip"
+policy_path = None
 
 # Load policy
 if policy_path:

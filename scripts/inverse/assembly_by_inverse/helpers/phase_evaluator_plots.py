@@ -30,7 +30,7 @@ from scripts.inverse.assembly_by_inverse.helpers.load_demos import load_demos_fr
 # HDF5_PATH = "../../datasets/disassembly_validation_5.hdf5"
 HDF5_PATH = "../../datasets/disassembly_15.hdf5"
 
-directories = sorted(os.listdir("../../models"))
+directories = sorted(os.listdir("../../pick_and_assemble_models"))
 latest_time = directories[-1]
 
 # time = "2025-08-27-20:16"

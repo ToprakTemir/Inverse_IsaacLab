@@ -1,12 +1,24 @@
 import torch
 
-def disassembly_success(env):
+from .reset_events import DISK_OFFSET_FROM_BASE, DISK_SPAWN_QUAT
+
+def disassembly_and_place_ground_success(env):
     """Count it success when the disk hits the ground"""
 
     moved_obj = env.scene["moved_obj"]
     moved_obj_pos = moved_obj.data.root_pos_w
     z = moved_obj_pos[:, 2]
     return z < 0.02
+
+def disassembly_pullout_success(env):
+    """Count it success when the disk is pulled out of the base"""
+    base_pos = env.scene["fixed_obj"].data.root_pos_w
+    moved_obj_original_pos = base_pos + DISK_OFFSET_FROM_BASE.to(base_pos.device)
+    moved_obj_pos = env.scene["moved_obj"].data.root_pos_w
+    moved_obj_disposition = moved_obj_pos - moved_obj_original_pos
+    moved_obj_disposition_in_y = moved_obj_disposition[:, 1]
+
+    return moved_obj_disposition_in_y.abs() > 0.04
 
 def assembly_success(env, pos_tolerance: float = 0.003):
     """Success reward when distance between disk and target base is <= tolerance."""

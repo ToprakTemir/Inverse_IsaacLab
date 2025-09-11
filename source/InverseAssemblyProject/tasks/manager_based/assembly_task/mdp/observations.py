@@ -41,3 +41,12 @@ def ee_ft_sensor(env):
 
     return torch.cat([force, torque], dim=-1)  # (N_env, 6)
 
+
+def ee_tip_pose(env, ee_tip_config: SceneEntityCfg = SceneEntityCfg(name="ee_center")):
+    data = env.scene[ee_tip_config.name].data
+
+    # target_pos_source has shape (num_envs, num_targets, n), so we select all environments, the first (and only) target, and all coordinates
+    pos_relative_to_source = data.target_pos_source[..., 0, :]  # (num_envs, 3)
+    quat_relative_to_source = data.target_quat_source[..., 0, :]  # (num_envs, 4)
+    return torch.cat([pos_relative_to_source, quat_relative_to_source], dim=-1)  # (num_envs, 7)
+

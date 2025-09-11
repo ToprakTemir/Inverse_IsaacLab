@@ -3,19 +3,16 @@ from stable_baselines3.common.callbacks import CheckpointCallback, StopTrainingO
 
 import argparse
 import os
-from typing import List, Optional, Sequence, Tuple, Dict
+from typing import List, Optional, Sequence, Dict
 
 import numpy as np
 import gymnasium as gym
-import h5py
 import datetime
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 
 import wandb
-from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import VecEnvWrapper, VecMonitor
 from stable_baselines3 import PPO
@@ -125,6 +122,25 @@ class PhaseMetricsCallback(BaseCallback):
                 wandb.log(data)
             self.buffer_phase.clear()
             self.buffer_rp.clear()
+
+class EpisodeRewardCallback(BaseCallback):
+    """Logs each finished episode's reward/length to W&B."""
+    def _on_step(self) -> bool:
+        if wandb.run is None:
+            return True
+        infos = self.locals.get("infos", [])
+        for info in infos:
+            ep = info.get("episode")
+            if ep:  # provided by VecMonitor
+                wandb.log(
+                    {
+                        "rollout/ep_rew_mean": ep["r"],
+                        "rollout/ep_len_mean": ep["l"],
+                    },
+                    step=self.num_timesteps,
+                )
+        return True
+
 
 
 # ------------------------------ Agent -------------------------------- #
@@ -275,7 +291,7 @@ class InverseAgent(nn.Module):
             obs_is_dict_key=self.hyperparams.get("obs_is_dict_key", None),
         )
 
-        wrapped = VecMonitor(wrapped, filename="training_data/monitor.csv")  # record episode stats
+        wrapped = VecMonitor(wrapped)  # record episode stats
 
         return wrapped
 
@@ -293,6 +309,7 @@ class InverseAgent(nn.Module):
             gae_lambda=self.hyperparams.get("ppo_gae_lambda", 0.95),
             gamma=self.hyperparams.get("ppo_gamma", 0.99),
             clip_range=self.hyperparams.get("ppo_clip_range", 0.2),
+            tensorboard_log=self.hyperparams.get("ppo_tensorboard_log", None)
         )
 
         # Optional: load BC weights into PPO policy's actor (best-effort name match)
@@ -416,7 +433,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--wandb_run_name", type=str, default=None)
-    parser.add_argument("--total_timesteps", type=int, default=10_000_000)
+    parser.add_argument("--total_timesteps", type=int, default=1_000_000)
     parser.add_argument("--reward_weight", type=float, default=1.0)
 
     # --- sweep / extra args W&B may pass ---
@@ -523,63 +540,10 @@ if __name__ == "__main__":
         obs_is_dict_key=None,
     )
 
-    # SET THESE FROM COMMAND LINE ARGS TO USE W&B SWEEPS
     model_dir = "./models"
     log_dir = "./models/logs"
     wandb_project = args.wandb_project
     wandb_run_name = args.wandb_run_name
-    wandb_config = None  # sweeps will override via env
-
-    # --- W&B setup ---
-    run = None
-    running_under_agent = ("WANDB_SWEEP_ID" in os.environ
-            or "WANDB_RUN_ID" in os.environ
-            or "WANDB_PROJECT" in os.environ
-            )
-
-    if wandb_project is not None or running_under_agent:
-        base_cfg = dict(
-            phase_hidden=default_hparams.get("phase_hidden"),
-            phase_lr=default_hparams.get("phase_lr"),
-            phase_batch=default_hparams.get("phase_batch"),
-            phase_epochs=default_hparams.get("phase_epochs"),
-            bc_hidden=default_hparams.get("bc_hidden"),
-            bc_lr=default_hparams.get("bc_lr"),
-            bc_batch=default_hparams.get("bc_batch"),
-            bc_epochs=default_hparams.get("bc_epochs"),
-            ppo_n_steps=default_hparams.get("ppo_n_steps"),
-            ppo_batch_size=default_hparams.get("ppo_batch_size"),
-            ppo_lr=default_hparams.get("ppo_lr"),
-            ppo_ent_coef=default_hparams.get("ppo_ent_coef"),
-            ppo_vf_coef=default_hparams.get("ppo_vf_coef"),
-            ppo_gamma=default_hparams.get("ppo_gamma"),
-            ppo_gae_lambda=default_hparams.get("ppo_gae_lambda"),
-            ppo_clip_range=default_hparams.get("ppo_clip_range"),
-            reward_weight=args.reward_weight,
-            total_timesteps=args.total_timesteps,
-        )
-        if wandb_config is not None:
-            base_cfg.update(wandb_config)
-
-        run = wandb.init(
-            project=wandb_project,
-            name=wandb_run_name,
-            config=base_cfg,
-            reinit=True,
-            sync_tensorboard=True,  # if you also use SB3's TensorBoard
-        )
-
-        wandb_cb = WandbCallback(
-            gradient_save_freq=0,  # set >0 to periodically save gradients
-            model_save_path=model_dir,  # keeps copies under W&B run dir
-            model_save_freq=0,  # SB3 is already checkpointing
-            verbose=1
-        )
-        phase_info_cb = PhaseMetricsCallback()
-
-        extra_callbacks = [wandb_cb, phase_info_cb]
-    else:
-        extra_callbacks = []
 
     agent = InverseAgent(
         env=env,
@@ -591,15 +555,19 @@ if __name__ == "__main__":
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M")
     os.makedirs(f"models/{timestamp}", exist_ok=False)
+    tb_dir = os.path.join("models", timestamp, "tb")
+    os.makedirs(tb_dir, exist_ok=True)
+    # make PPO write TensorBoard scalars here
+    default_hparams["tensorboard_log"] = tb_dir
 
     # 4) Train the Phase Evaluator (Evaluator)
 
-    # agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth", save_latest_path=f"models/{timestamp}/phase_evaluator_latest.pth")
-    agent.load_phase_evaluator(f"models/2025-08-28-17:45/phase_evaluator_best.pth", obs_dim=9999999)
+    agent.train_phase_evaluator(save_best_path=f"models/{timestamp}/phase_evaluator_best.pth", save_latest_path=f"models/{timestamp}/phase_evaluator_latest.pth")
+    # agent.load_phase_evaluator(f"models/2025-08-28-17:45/phase_evaluator_best.pth", obs_dim=9999999)
 
     # 5) Pretrain BC policy
-    # agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
-    agent.load_bc_policy(f"models/2025-08-27-20:07/bc_policy_best.pth", obs_dim=25, act_dim=7)
+    agent.pretrain_bc_policy(save_best_path=f"models/{timestamp}/bc_policy_best.pth", save_latest_path=f"models/{timestamp}/bc_policy_latest.pth")
+    # agent.load_bc_policy(f"models/2025-08-27-20:07/bc_policy_best.pth", obs_dim=25, act_dim=7)
 
     # 6) PPO Finetune with phase-shaped rewards
     agent.finetune_with_ppo(
@@ -607,6 +575,5 @@ if __name__ == "__main__":
         reward_weight=args.reward_weight,
         model_dir=f"models/{timestamp}",
         log_dir=f"models/{timestamp}/logs",
-        extra_callbacks=extra_callbacks,
     )
     agent.save_inverse_model(f"models/{timestamp}/final_inverse_model.zip")
