@@ -107,7 +107,7 @@ def reset_to_disassembled_pose(env, env_ids, base_asset_cfg: SceneEntityCfg, dis
     disk_pos = _get_random_disk_xyz(len(env_ids), device)
     _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_pos, disk_quat)
 
-def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat, tol=1e-3):
+def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat, tol=1e-2):
     """Set robot joint positions using DLS IK; stop when the worst env's error ≤ tol."""
     terms_backup = env.recorder_manager._terms
     names_backup = env.recorder_manager._term_names
@@ -130,8 +130,11 @@ def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat, to
         mval, midx = per_env.max(dim=0)
         return mval, midx, per_env
 
-    max_err, worst_idx, per_env_err = worst_err(err)
+    # reset guard (to prevent environment to try to reset in the steps inside this function)
 
+    env._reset_blocked_ids = env_ids
+
+    max_err, worst_idx, per_env_err = worst_err(err)
     while max_err > tol:
         # get current ee pose
         ee_pose = observations.ee_tip_pose(env)
@@ -165,6 +168,8 @@ def set_ee_pose_ik(env, env_ids, fingertip_target_pos, fingertip_target_quat, to
         # recompute worst error for loop condition
         max_err, worst_idx, _ = worst_err(err)
 
+    # restore reset buffers
+    env._reset_blocked_ids = None
     env.recorder_manager._terms = terms_backup
     env.recorder_manager._term_names = names_backup
 
@@ -178,7 +183,7 @@ def set_robot_holding_disk(env, env_ids, robot_asset_cfg: SceneEntityCfg, disk_a
     # get robot's end-effector pose
     ee_pose = observations.ee_tip_pose(env)
     disk_teleport_pos = ee_pose[:, :3]
-    disk_teleport_pos_offset = torch.tensor([0, 0.008, 0], device=device).repeat(len(env_ids), 1)  # IMPORTANT: can be tuned
+    disk_teleport_pos_offset = torch.tensor([0, 0.004, 0], device=device).repeat(len(env_ids), 1)  # IMPORTANT: can be tuned
     disk_teleport_pos = disk_teleport_pos + disk_teleport_pos_offset
     disk_teleport_quat = DISK_ASSEMBLED_QUAT.to(device=device).repeat(len(env_ids), 1)
 
@@ -196,6 +201,7 @@ def set_robot_holding_disk(env, env_ids, robot_asset_cfg: SceneEntityCfg, disk_a
 
     # teleport the disk to the gripper
     _write_cords_to_asset(env, env_ids, disk_asset_cfg, disk_teleport_pos, disk_teleport_quat)
+    env.sim.step(render=False)  # give it time to breathe
 
     # close the gripper
     close_action = torch.zeros_like(env.action_manager.action)

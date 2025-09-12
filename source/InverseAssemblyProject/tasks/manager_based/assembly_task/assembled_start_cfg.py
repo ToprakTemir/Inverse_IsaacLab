@@ -128,7 +128,7 @@ class AssemblySceneCfg(InteractiveSceneCfg):
             "Slider_1_actuator": ImplicitActuatorCfg(
                 joint_names_expr=["Slider_1"],
                 effort_limit_sim
-                =30.0,
+                =300.0,
                 velocity_limit_sim
                 =100.0,
                 stiffness=ARM_KP,
@@ -237,7 +237,7 @@ class ObservationsCfg:
         target_pos = ObsTerm(func=mdp.target_pos, params={"asset_cfg": SceneEntityCfg("fixed_obj")}) # 3D
         ft_sensor = ObsTerm(func=mdp.ee_ft_sensor) # 6D (force + torque)
         disk_target_distance = ObsTerm(func=mdp.disk_target_distance, params={"disk_asset_cfg": SceneEntityCfg("moved_obj"), "base_asset_cfg": SceneEntityCfg("fixed_obj")}) # 1D
-        ee_tip_pose = ObsTerm(func=mdp.ee_tip_pose, params={"ee_tip_config": SceneEntityCfg("ee_center")}) # 7D (pos + quat)
+        # ee_tip_pose = ObsTerm(func=mdp.ee_tip_pose, params={"ee_tip_config": SceneEntityCfg("ee_center")}) # 7D (pos + quat)
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -340,7 +340,7 @@ class AssembledStartEnvCfg(ManagerBasedRLEnvCfg):
     sim.dt = 1.0 / 720
     sim.physx.max_position_iteration_count = 200
     sim.physx.max_velocity_iteration_count = 20
-    episode_length_s = 24.0
+    episode_length_s = 10.0
     sim.physx.gpu_max_rigid_patch_count = 2621440
     sim.physx.gpu_collision_stack_size = 2 ** 29
     sim.device = "cuda:0"

@@ -28,13 +28,12 @@ from scripts.inverse.assembly_by_inverse.helpers.load_demos import load_demos_fr
 # ---------------------------- CONFIG ---------------------------- #
 
 # HDF5_PATH = "../../datasets/disassembly_validation_5.hdf5"
-HDF5_PATH = "../../datasets/disassembly_15.hdf5"
+HDF5_PATH = "../../datasets/only_pullout_15.hdf5"
 
 directories = sorted(os.listdir("../../pick_and_assemble_models"))
 latest_time = directories[-1]
 
-# time = "2025-08-27-20:16"
-time = latest_time
+time = "2025-09-12-13:08"
 
 PHASE_EVAL_WEIGHTS = f"../../models/{time}/phase_evaluator_best.pth"
 NON_ROBOT_INDICES = slice(8, None) # or list of indices, e.g. [8, 9, 10, ...]
@@ -45,7 +44,6 @@ Y_MIN, Y_MAX = -0.4, 0.4
 Z_MIN, Z_MAX =  0.0, 0.3
 
 GRID_RES = 100  # grid resolution per axis
-NUM_EPISODES_TO_PLOT = 15  # for the timestamp scatter
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 RNG = np.random.default_rng(42)
@@ -101,7 +99,8 @@ def plot_pred_vs_actual_timestamps(demos: List[Dict[str, np.ndarray]],
             xt = torch.as_tensor(xs, dtype=torch.float32, device=DEVICE)
             preds = phase_eval(xt).squeeze(-1).detach().cpu().numpy()
 
-        plt.scatter(actual, preds, s=5, label=f"Episode {i}", color=colors(i - 1))
+        # plt.scatter(actual, preds, s=5, label=f"Episode {i}", color=colors(i - 1))
+        plt.plot(actual, preds, marker='o', markersize=3, linewidth=1, label=f"Episode {i}", color=colors(i - 1))
 
     # Ideal diagonal
     plt.plot([0, 1], [0, 1], "k--", label="Ideal")
@@ -245,7 +244,7 @@ def main():
         demos=demos,
         phase_eval=model,
         slice_indices=non_robot_indices,
-        num_episodes=NUM_EPISODES_TO_PLOT,
+        num_episodes=5,
     )
 
     # plot_plane_heatmaps(

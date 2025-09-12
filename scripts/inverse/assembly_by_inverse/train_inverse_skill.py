@@ -348,7 +348,7 @@ class InverseAgent(nn.Module):
     ):
         venv = self._make_wrapped_env(reward_weight=reward_weight)
         model = self._init_ppo(venv)
-        wandb.watch(model.policy, log="all", log_freq=10)
+        # wandb.watch(model.policy, log="all", log_freq=10)
 
         if log_dir is not None:
             os.makedirs(log_dir, exist_ok=True)
@@ -436,10 +436,6 @@ if __name__ == "__main__":
     parser.add_argument("--total_timesteps", type=int, default=1_000_000)
     parser.add_argument("--reward_weight", type=float, default=1.0)
 
-    # --- sweep / extra args W&B may pass ---
-    parser.add_argument("--demo_path", type=str, default="./datasets/disassembly_15.hdf5")
-    parser.add_argument("--val_demo_path", type=str, default="./datasets/disassembly_validation_5.hdf5")
-
     # phase evaluator
     parser.add_argument("--phase_hidden", type=py_literal, default=[256, 256])
     parser.add_argument("--phase_lr", type=float, default=1e-3)
@@ -492,11 +488,11 @@ if __name__ == "__main__":
     env = ManagerBasedRLEnv(cfg)
 
     # 2) Load demos
-    demo_path = "./datasets/disassembly_15.hdf5"
+    demo_path = "./datasets/only_pullout_15.hdf5"
     demos = load_demos_from_hdf5(demo_path)
     print(f"Loaded {len(demos)} demos from {os.path.abspath(demo_path)}")
 
-    val_demos_path = "./datasets/disassembly_validation_5.hdf5"
+    val_demos_path = "./datasets/only_pullout_validation_5.hdf5"
     val_demos = load_demos_from_hdf5(val_demos_path)
     print(f"Loaded {len(val_demos)} validation demos from {os.path.abspath(val_demos_path)}")
 

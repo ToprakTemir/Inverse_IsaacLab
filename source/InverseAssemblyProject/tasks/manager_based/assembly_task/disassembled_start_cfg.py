@@ -92,7 +92,6 @@ class TerminationsCfg:
 @configclass
 class DisassembledStartEnvCfg(ManagerBasedRLEnvCfg):
 
-    # externally overridable knobs (accepted by constructor)I'm trying to collect demonstrations of robot holding something and putting it somewhere else in Isaaclab using record_demos.py script preinstalled with isaaclab
     num_envs: int = 1024
     env_spacing: float = 2.5
 
@@ -117,7 +116,7 @@ class DisassembledStartEnvCfg(ManagerBasedRLEnvCfg):
     sim.dt = 1.0 / 720
     sim.physx.max_position_iteration_count = 200
     sim.physx.max_velocity_iteration_count = 20
-    episode_length_s = 24.0
+    episode_length_s = 10.0
     sim.physx.gpu_max_rigid_patch_count = 2621440
     sim.physx.gpu_collision_stack_size = 2 ** 29
     sim.device = "cuda:0"
